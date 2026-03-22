@@ -22,7 +22,7 @@ Standalone service used by Locket (and future projects) to securely access multi
 
 > Repo scaffold · runtime config · persistence
 
-- [ ] **1.1** New Go service scaffold with router, structured logging, health endpoint `Go` · 2 pts
+- [x] **1.1** New Go service scaffold with router, structured logging, health endpoint `Go` · 2 pts
 - [ ] **1.2** Config loader for env + secrets manager references `Go` `Infra` · 2 pts
 - [ ] **1.3** Postgres schema: bucket_connections, access_policies, audit_events `DB` · 2 pts
 - [ ] **1.4** Migration runner + boot-time schema check `Go` `DB` · 2 pts
