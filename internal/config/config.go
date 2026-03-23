@@ -1,17 +1,41 @@
 package config
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 type Config struct {
-	Port     string
-	LogLevel string
+	Port                         string
+	LogLevel                     string
+	DatabaseUrl                  string
+	DatabaseMigrationsDir        string
+	DatabaseMigrateOnStartup     bool
+	DatabaseSchemaCheckOnStartup bool
 }
 
 func LoadFromEnv() Config {
 	return Config{
-		Port:     envOrDefault("PORT", "8080"),
-		LogLevel: envOrDefault("LOG_LEVEL", "info"),
+		Port:                         envOrDefault("PORT", "8080"),
+		LogLevel:                     envOrDefault("LOG_LEVEL", "info"),
+		DatabaseUrl:                  envOrDefault("DATABASE_URL", ""),
+		DatabaseMigrationsDir:        envOrDefault("DB_MIGRATIONS_DIR", "./migrations"),
+		DatabaseMigrateOnStartup:     envOrDefault("DB_MIGRATE_ON_STARTUP", "true") == "true",
+		DatabaseSchemaCheckOnStartup: envOrDefault("DB_SCHEMA_CHECK_ON_STARTUP", "true") == "true",
 	}
+}
+
+func (c Config) Validate() error {
+	var missing []string
+	if c.DatabaseUrl == "" {
+		missing = append(missing, "DATABASE_URL")
+	}
+
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required environment variable(s): %v", missing)
+	}
+
+	return nil
 }
 
 func (c Config) Addr() string {

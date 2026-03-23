@@ -12,13 +12,46 @@ import (
 	"github.com/joho/godotenv"
 
 	"s3-service/internal/config"
+	"s3-service/internal/database"
 	"s3-service/internal/httpapi"
 )
 
 func main() {
 	_ = godotenv.Load()
 	cfg := config.LoadFromEnv()
+	if err := cfg.Validate(); err != nil {
+		os.Exit(1)
+	}
+
 	logger := newLogger(cfg.LogLevel)
+
+	db, err := database.Open(context.Background(), cfg.DatabaseUrl)
+	if err != nil {
+		logger.Error("failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+
+	defer func() {
+		if err := db.Close(); err != nil {
+			logger.Error("failed to close database connection", "error", err)
+		}
+	}()
+
+	if cfg.DatabaseMigrateOnStartup {
+		logger.Info("migrating database on startup")
+		if err := database.MigrateUp(context.Background(), db, cfg.DatabaseMigrationsDir); err != nil {
+			logger.Error("database migration failed", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	if cfg.DatabaseSchemaCheckOnStartup {
+		logger.Info("checking database schema on startup")
+		if err := database.CheckSchema(context.Background(), db); err != nil {
+			logger.Error("database schema check failed", "error", err)
+			os.Exit(1)
+		}
+	}
 
 	handler := httpapi.NewRouter(logger)
 	server := &http.Server{
