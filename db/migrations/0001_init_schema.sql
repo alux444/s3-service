@@ -13,7 +13,8 @@ CREATE TABLE bucket_connections (
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (project_id, app_id, bucket_name)
+  CONSTRAINT uq_bucket_connections_project_app_bucket
+    UNIQUE (project_id, app_id, bucket_name)
 );
 
 COMMENT ON TABLE bucket_connections IS
@@ -40,7 +41,7 @@ COMMENT ON COLUMN bucket_connections.created_at IS
   'Creation timestamp in UTC.';
 COMMENT ON COLUMN bucket_connections.updated_at IS
   'Last update timestamp in UTC.';
-COMMENT ON CONSTRAINT bucket_connections_project_id_app_id_bucket_name_key ON bucket_connections IS
+COMMENT ON CONSTRAINT uq_bucket_connections_project_app_bucket ON bucket_connections IS
   'Prevents duplicate bucket registrations per project/app.';
   
 CREATE INDEX idx_bucket_connections_project_app
@@ -62,7 +63,8 @@ CREATE TABLE access_policies (
   prefix_allowlist TEXT[] NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (bucket_connection_id, principal_type, principal_id)
+  CONSTRAINT uq_access_policies_connection_principal
+    UNIQUE (bucket_connection_id, principal_type, principal_id)
 );
 
 COMMENT ON TABLE access_policies IS
@@ -91,7 +93,7 @@ COMMENT ON COLUMN access_policies.created_at IS
   'Creation timestamp in UTC.';
 COMMENT ON COLUMN access_policies.updated_at IS
   'Last update timestamp in UTC.';
-COMMENT ON CONSTRAINT access_policies_bucket_connection_id_principal_type_principal_id_key ON access_policies IS
+COMMENT ON CONSTRAINT uq_access_policies_connection_principal ON access_policies IS
   'Prevents duplicate policy entries for same principal on same connection.';
 
 CREATE INDEX idx_access_policies_principal

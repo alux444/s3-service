@@ -1,0 +1,10 @@
+FROM postgres:18-alpine
+
+# Default local-dev credentials. Override with -e at runtime if needed.
+ENV POSTGRES_USER=s3_service
+ENV POSTGRES_PASSWORD=s3_service
+ENV POSTGRES_DB=s3_service
+
+EXPOSE 5432
+
+HEALTHCHECK --interval=5s --timeout=3s --retries=10 CMD pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" || exit 1
