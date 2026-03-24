@@ -13,8 +13,19 @@ func NewRouter(logger *slog.Logger) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Recoverer)
+	r.Use(recoverJSON(logger))
 	r.Use(requestLogger(logger))
+
+	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+		writeError(w, req, http.StatusNotFound, "not_found", "resource not found", NotFoundDetails{
+			Resource: "route",
+			ID:       req.URL.Path,
+		})
+	})
+
+	r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
+		writeError(w, req, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", nil)
+	})
 
 	r.Get("/health", healthHandler)
 
