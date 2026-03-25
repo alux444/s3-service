@@ -12,6 +12,10 @@ type Config struct {
 	DatabaseMigrationsDir        string
 	DatabaseMigrateOnStartup     bool
 	DatabaseSchemaCheckOnStartup bool
+	JWTIssuer                    string
+	JWTAudience                  string
+	JWTJWKSURL                   string
+	JWTEnabled                   bool
 }
 
 func LoadFromEnv() Config {
@@ -22,6 +26,10 @@ func LoadFromEnv() Config {
 		DatabaseMigrationsDir:        envOrDefault("DB_MIGRATIONS_DIR", "./migrations"),
 		DatabaseMigrateOnStartup:     envOrDefault("DB_MIGRATE_ON_STARTUP", "true") == "true",
 		DatabaseSchemaCheckOnStartup: envOrDefault("DB_SCHEMA_CHECK_ON_STARTUP", "true") == "true",
+		JWTIssuer:                    envOrDefault("JWT_ISSUER", ""),
+		JWTAudience:                  envOrDefault("JWT_AUDIENCE", ""),
+		JWTJWKSURL:                   envOrDefault("JWT_JWKS_URL", ""),
+		JWTEnabled:                   envOrDefault("JWT_ENABLED", "false") == "true",
 	}
 }
 
@@ -29,6 +37,18 @@ func (c Config) Validate() error {
 	var missing []string
 	if c.DatabaseUrl == "" {
 		missing = append(missing, "DATABASE_URL")
+	}
+
+	if c.JWTEnabled {
+		if c.JWTIssuer == "" {
+			missing = append(missing, "JWT_ISSUER")
+		}
+		if c.JWTAudience == "" {
+			missing = append(missing, "JWT_AUDIENCE")
+		}
+		if c.JWTJWKSURL == "" {
+			missing = append(missing, "JWT_JWKS_URL")
+		}
 	}
 
 	if len(missing) > 0 {

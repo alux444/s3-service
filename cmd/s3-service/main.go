@@ -11,6 +11,7 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"s3-service/internal/auth"
 	"s3-service/internal/config"
 	"s3-service/internal/database"
 	"s3-service/internal/httpapi"
@@ -53,7 +54,19 @@ func main() {
 		}
 	}
 
-	handler := httpapi.NewRouter(logger)
+	verifier, err := auth.NewJWTVerifier(auth.Config{
+		Issuer:   cfg.JWTIssuer,
+		Audience: cfg.JWTAudience,
+		JWKSURL:  cfg.JWTJWKSURL,
+		Enabled:  cfg.JWTEnabled,
+	})
+	if err != nil {
+		logger.Error("failed to initialize JWT verifier", "error", err)
+		os.Exit(1)
+	}
+	defer verifier.Close()
+
+	handler := httpapi.NewRouter(logger, httpapi.JWTAuthMiddleware(logger, verifier))
 	server := &http.Server{
 		Addr:         cfg.Addr(),
 		Handler:      handler,
