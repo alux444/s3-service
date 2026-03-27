@@ -39,9 +39,10 @@ func NewRouter(logger *slog.Logger, authMW func(http.Handler) http.Handler) http
 			}
 
 			writeOK(w, r, map[string]any{
-				"sub":    claims.Subject,
-				"app_id": claims.AppID,
-				"role":   claims.Role,
+				"sub":        claims.Subject,
+				"app_id":     claims.AppID,
+				"project_id": claims.ProjectID,
+				"role":       claims.Role,
 			})
 		})
 	})

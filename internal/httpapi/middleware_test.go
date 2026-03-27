@@ -140,13 +140,13 @@ func TestJWTAuthMiddleware(t *testing.T) {
 	})
 
 	t.Run("accepts case insensitive bearer and forwards claims", func(t *testing.T) {
-		v := &stubVerifier{claims: auth.Claims{Subject: "user-1", AppID: "app-1", Role: auth.RoleAdmin}}
+		v := &stubVerifier{claims: auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleAdmin}}
 		h := JWTAuthMiddleware(logger, v)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims, ok := ClaimsFromContext(r.Context())
 			if !ok {
 				t.Fatal("claims not found in context")
 			}
-			if claims.Subject != "user-1" || claims.AppID != "app-1" || claims.Role != auth.RoleAdmin {
+			if claims.Subject != "user-1" || claims.AppID != "app-1" || claims.Role != auth.RoleAdmin || claims.ProjectID != "project-1" {
 				t.Fatalf("unexpected claims: %+v", claims)
 			}
 			w.WriteHeader(http.StatusOK)

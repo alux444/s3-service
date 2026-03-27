@@ -14,8 +14,8 @@ type Role string
 
 const (
 	RoleAdmin          Role = "admin"
-	RoleProjectClient  Role = "project_client"
-	RoleReadOnlyClient Role = "read_only_client"
+	RoleProjectClient  Role = "project-client"
+	RoleReadOnlyClient Role = "read-only-client"
 )
 
 var (
@@ -33,9 +33,10 @@ type Config struct {
 }
 
 type Claims struct {
-	Subject string `json:"sub"`
-	AppID   string `json:"app_id"`
-	Role    Role   `json:"role"`
+	Subject   string `json:"sub"`
+	AppID     string `json:"app_id"`
+	ProjectID string `json:"project_id"`
+	Role      Role   `json:"role"`
 }
 
 type JWTVerifier struct {
@@ -114,7 +115,8 @@ func (v *JWTVerifier) VerifyWithContext(ctx context.Context, tokenString string)
 
 	sub, _ := mc["sub"].(string)
 	appID, _ := mc["app_id"].(string)
-	if sub == "" || appID == "" {
+	projectID, _ := mc["project_id"].(string)
+	if sub == "" || appID == "" || projectID == "" {
 		return Claims{}, fmt.Errorf("%w: %w", ErrTokenInvalid, ErrMissingClaim)
 	}
 
@@ -125,9 +127,10 @@ func (v *JWTVerifier) VerifyWithContext(ctx context.Context, tokenString string)
 	}
 
 	return Claims{
-		Subject: sub,
-		AppID:   appID,
-		Role:    role,
+		Subject:   sub,
+		AppID:     appID,
+		ProjectID: projectID,
+		Role:      role,
 	}, nil
 }
 
