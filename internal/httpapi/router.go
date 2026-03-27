@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -9,7 +10,11 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter(logger *slog.Logger, authMW func(http.Handler) http.Handler) http.Handler {
+type BucketConnectionService interface {
+	ListForScope(ctx context.Context, projectID, appID string) ([]string, error)
+}
+
+func NewRouter(logger *slog.Logger, authMW func(http.Handler) http.Handler, bucketService BucketConnectionService) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -28,24 +33,7 @@ func NewRouter(logger *slog.Logger, authMW func(http.Handler) http.Handler) http
 	})
 
 	r.Get("/health", healthHandler)
-
-	r.Route("/v1", func(v1 chi.Router) {
-		v1.Use(authMW)
-		v1.Get("/auth-check", func(w http.ResponseWriter, r *http.Request) {
-			claims, ok := ClaimsFromContext(r.Context())
-			if !ok {
-				writeError(w, r, http.StatusUnauthorized, "auth_failed", "authentication required", AuthDetails{Reason: "missing"})
-				return
-			}
-
-			writeOK(w, r, map[string]any{
-				"sub":        claims.Subject,
-				"app_id":     claims.AppID,
-				"project_id": claims.ProjectID,
-				"role":       claims.Role,
-			})
-		})
-	})
+	registerV1Routes(r, authMW, bucketService)
 
 	return r
 }

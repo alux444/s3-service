@@ -183,7 +183,7 @@ func TestRecoverJSONPanicEnvelope(t *testing.T) {
 
 func TestRouterErrorEnvelopes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	r := NewRouter(logger, func(next http.Handler) http.Handler { return next })
+	r := NewRouter(logger, func(next http.Handler) http.Handler { return next }, nil)
 
 	t.Run("not_found_includes_typed_details", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/missing", nil)

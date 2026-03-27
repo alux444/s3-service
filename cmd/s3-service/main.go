@@ -15,6 +15,7 @@ import (
 	"s3-service/internal/config"
 	"s3-service/internal/database"
 	"s3-service/internal/httpapi"
+	"s3-service/internal/service"
 )
 
 func main() {
@@ -66,7 +67,14 @@ func main() {
 	}
 	defer verifier.Close()
 
-	handler := httpapi.NewRouter(logger, httpapi.JWTAuthMiddleware(logger, verifier))
+	ownershipRepo := database.NewOwnershipRepository(db)
+	bucketService := service.NewBucketConnectionsService(ownershipRepo)
+
+	handler := httpapi.NewRouter(
+		logger,
+		httpapi.JWTAuthMiddleware(logger, verifier),
+		bucketService,
+	)
 	server := &http.Server{
 		Addr:         cfg.Addr(),
 		Handler:      handler,
