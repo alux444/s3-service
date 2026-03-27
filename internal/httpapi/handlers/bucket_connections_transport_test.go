@@ -1,4 +1,4 @@
-package httpapi
+package handlers
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"s3-service/internal/auth"
+	httpmiddleware "s3-service/internal/httpapi/middleware"
 )
 
 type stubBucketConnectionService struct {
@@ -37,7 +38,7 @@ type bucketConnectionsResponse struct {
 func TestListBucketConnectionsHandler(t *testing.T) {
 	t.Run("returns unauthorized when claims are missing", func(t *testing.T) {
 		svc := &stubBucketConnectionService{}
-		h := listBucketConnectionsHandler(svc)
+		h := ListBucketConnectionsHandler(svc)
 
 		req := httptest.NewRequest(http.MethodGet, "/v1/bucket-connections", nil)
 		rec := httptest.NewRecorder()
@@ -51,11 +52,11 @@ func TestListBucketConnectionsHandler(t *testing.T) {
 
 	t.Run("forwards claim scope and returns buckets", func(t *testing.T) {
 		svc := &stubBucketConnectionService{buckets: []string{"bucket-a", "bucket-b"}}
-		h := listBucketConnectionsHandler(svc)
+		h := ListBucketConnectionsHandler(svc)
 
 		claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleAdmin}
 		req := httptest.NewRequest(http.MethodGet, "/v1/bucket-connections", nil)
-		req = req.WithContext(context.WithValue(req.Context(), claimsContextKey{}, claims))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
 		rec := httptest.NewRecorder()
 
 		h.ServeHTTP(rec, req)
@@ -81,11 +82,11 @@ func TestListBucketConnectionsHandler(t *testing.T) {
 
 	t.Run("returns internal server error when service fails", func(t *testing.T) {
 		svc := &stubBucketConnectionService{err: errors.New("db down")}
-		h := listBucketConnectionsHandler(svc)
+		h := ListBucketConnectionsHandler(svc)
 
 		claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleAdmin}
 		req := httptest.NewRequest(http.MethodGet, "/v1/bucket-connections", nil)
-		req = req.WithContext(context.WithValue(req.Context(), claimsContextKey{}, claims))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
 		rec := httptest.NewRecorder()
 
 		h.ServeHTTP(rec, req)

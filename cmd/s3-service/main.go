@@ -14,7 +14,8 @@ import (
 	"s3-service/internal/auth"
 	"s3-service/internal/config"
 	"s3-service/internal/database"
-	"s3-service/internal/httpapi"
+	httpmiddleware "s3-service/internal/httpapi/middleware"
+	"s3-service/internal/httpapi/router"
 	"s3-service/internal/service"
 )
 
@@ -70,9 +71,9 @@ func main() {
 	ownershipRepo := database.NewOwnershipRepository(db)
 	bucketService := service.NewBucketConnectionsService(ownershipRepo)
 
-	handler := httpapi.NewRouter(
+	handler := router.NewRouter(
 		logger,
-		httpapi.JWTAuthMiddleware(logger, verifier),
+		httpmiddleware.JWTAuthMiddleware(logger, verifier),
 		bucketService,
 	)
 	server := &http.Server{

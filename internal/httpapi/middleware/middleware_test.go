@@ -1,4 +1,4 @@
-package httpapi
+package middleware
 
 import (
 	"context"

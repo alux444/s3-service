@@ -59,8 +59,8 @@ type errorBody struct {
 	Details   ErrorDetails `json:"details,omitempty"`
 }
 
-func writeError(w http.ResponseWriter, r *http.Request, status int, code, message string, details ErrorDetails) {
-	writeJSON(w, status, envelope[any]{
+func WriteError(w http.ResponseWriter, r *http.Request, status int, code, message string, details ErrorDetails) {
+	WriteJSON(w, status, envelope[any]{
 		Error: &errorBody{
 			Code:      code,
 			Message:   message,

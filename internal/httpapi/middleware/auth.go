@@ -1,4 +1,4 @@
-package httpapi
+package middleware
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"s3-service/internal/auth"
+	"s3-service/internal/httpapi"
 )
 
 type claimsContextKey struct{}
@@ -21,7 +22,7 @@ func JWTAuthMiddleware(logger *slog.Logger, verifier tokenVerifier) func(http.Ha
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tokenString, ok := bearerTokenFromHeader(r.Header.Get("Authorization"))
 			if !ok {
-				writeError(w, r, http.StatusUnauthorized, "auth_failed", "missing bearer token", AuthDetails{Reason: "missing"})
+				httpapi.WriteError(w, r, http.StatusUnauthorized, "auth_failed", "missing bearer token", httpapi.AuthDetails{Reason: "missing"})
 				return
 			}
 
@@ -33,7 +34,7 @@ func JWTAuthMiddleware(logger *slog.Logger, verifier tokenVerifier) func(http.Ha
 				}
 
 				logger.Warn("failed to verify JWT", "error", err, "reason", reason)
-				writeError(w, r, http.StatusUnauthorized, "auth_failed", "invalid authorization token", AuthDetails{Reason: reason})
+				httpapi.WriteError(w, r, http.StatusUnauthorized, "auth_failed", "invalid authorization token", httpapi.AuthDetails{Reason: reason})
 				return
 			}
 
@@ -46,6 +47,10 @@ func JWTAuthMiddleware(logger *slog.Logger, verifier tokenVerifier) func(http.Ha
 func ClaimsFromContext(ctx context.Context) (auth.Claims, bool) {
 	claims, ok := ctx.Value(claimsContextKey{}).(auth.Claims)
 	return claims, ok
+}
+
+func ContextWithClaims(ctx context.Context, claims auth.Claims) context.Context {
+	return context.WithValue(ctx, claimsContextKey{}, claims)
 }
 
 func bearerTokenFromHeader(header string) (string, bool) {

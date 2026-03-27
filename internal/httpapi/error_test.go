@@ -1,4 +1,4 @@
-package httpapi
+package httpapi_test
 
 import (
 	"bytes"
@@ -10,6 +10,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"s3-service/internal/httpapi"
+	httpmiddleware "s3-service/internal/httpapi/middleware"
+	"s3-service/internal/httpapi/router"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -75,7 +79,7 @@ func TestWriteErrorEnvelope(t *testing.T) {
 		status        int
 		code          string
 		message       string
-		details       ErrorDetails
+		details       httpapi.ErrorDetails
 		expectDetails bool
 		wantDetails   map[string]any
 	}{
@@ -92,7 +96,7 @@ func TestWriteErrorEnvelope(t *testing.T) {
 			status:        http.StatusBadRequest,
 			code:          "validation_failed",
 			message:       "validation failed",
-			details:       ValidationDetails{Field: "bucket", Reason: "required"},
+			details:       httpapi.ValidationDetails{Field: "bucket", Reason: "required"},
 			expectDetails: true,
 			wantDetails:   map[string]any{"field": "bucket", "reason": "required"},
 		},
@@ -101,7 +105,7 @@ func TestWriteErrorEnvelope(t *testing.T) {
 			status:        http.StatusNotFound,
 			code:          "not_found",
 			message:       "resource not found",
-			details:       NotFoundDetails{Resource: "image", ID: "img_123"},
+			details:       httpapi.NotFoundDetails{Resource: "image", ID: "img_123"},
 			expectDetails: true,
 			wantDetails:   map[string]any{"resource": "image", "id": "img_123"},
 		},
@@ -110,7 +114,7 @@ func TestWriteErrorEnvelope(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			h := middleware.RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				writeError(w, r, tc.status, tc.code, tc.message, tc.details)
+				httpapi.WriteError(w, r, tc.status, tc.code, tc.message, tc.details)
 			}))
 
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -152,7 +156,7 @@ func TestRecoverJSONPanicEnvelope(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := slog.New(&capturingHandler{buf: buf})
 
-	h := middleware.RequestID(recoverJSON(logger)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	h := middleware.RequestID(httpmiddleware.RecoverJSON(logger)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("boom")
 	})))
 
@@ -183,7 +187,7 @@ func TestRecoverJSONPanicEnvelope(t *testing.T) {
 
 func TestRouterErrorEnvelopes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	r := NewRouter(logger, func(next http.Handler) http.Handler { return next }, nil)
+	r := router.NewRouter(logger, func(next http.Handler) http.Handler { return next }, nil)
 
 	t.Run("not_found_includes_typed_details", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/missing", nil)
@@ -207,12 +211,12 @@ func TestRouterErrorEnvelopes(t *testing.T) {
 	t.Run("method_not_allowed_omits_details", func(t *testing.T) {
 		r2 := chi.NewRouter()
 		r2.Use(middleware.RequestID)
-		r2.Use(recoverJSON(logger))
+		r2.Use(httpmiddleware.RecoverJSON(logger))
 		r2.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
-			writeError(w, req, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", nil)
+			httpapi.WriteError(w, req, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", nil)
 		})
 		r2.Get("/only-get", func(w http.ResponseWriter, r *http.Request) {
-			writeOK(w, r, map[string]string{"ok": "true"})
+			httpapi.WriteOK(w, r, map[string]string{"ok": "true"})
 		})
 
 		req := httptest.NewRequest(http.MethodPost, "/only-get", nil)
@@ -239,7 +243,7 @@ func TestWriteError_WithDomainDetails(t *testing.T) {
 		status      int
 		code        string
 		message     string
-		details     ErrorDetails
+		details     httpapi.ErrorDetails
 		wantDetails map[string]any
 	}{
 		{
@@ -247,7 +251,7 @@ func TestWriteError_WithDomainDetails(t *testing.T) {
 			status:      http.StatusUnauthorized,
 			code:        "auth_failed",
 			message:     "authentication failed",
-			details:     AuthDetails{Reason: "expired"},
+			details:     httpapi.AuthDetails{Reason: "expired"},
 			wantDetails: map[string]any{"reason": "expired"},
 		},
 		{
@@ -255,7 +259,7 @@ func TestWriteError_WithDomainDetails(t *testing.T) {
 			status:  http.StatusTooManyRequests,
 			code:    "throttle",
 			message: "rate limit exceeded",
-			details: RateLimitDetails{RetryAfter: 30, Limit: 100, Remaining: 0},
+			details: httpapi.RateLimitDetails{RetryAfter: 30, Limit: 100, Remaining: 0},
 			wantDetails: map[string]any{
 				"retryAfter": float64(30),
 				"limit":      float64(100),
@@ -267,7 +271,7 @@ func TestWriteError_WithDomainDetails(t *testing.T) {
 			status:  http.StatusConflict,
 			code:    "conflict",
 			message: "resource already exists",
-			details: ConflictDetails{Resource: "bucket_connection", Field: "bucket_name", Value: "my-bucket"},
+			details: httpapi.ConflictDetails{Resource: "bucket_connection", Field: "bucket_name", Value: "my-bucket"},
 			wantDetails: map[string]any{
 				"resource": "bucket_connection",
 				"field":    "bucket_name",
@@ -279,7 +283,7 @@ func TestWriteError_WithDomainDetails(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			h := middleware.RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				writeError(w, r, tc.status, tc.code, tc.message, tc.details)
+				httpapi.WriteError(w, r, tc.status, tc.code, tc.message, tc.details)
 			}))
 
 			req := httptest.NewRequest(http.MethodGet, "/", nil)

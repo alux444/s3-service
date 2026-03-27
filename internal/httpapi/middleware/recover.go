@@ -1,4 +1,4 @@
-package httpapi
+package middleware
 
 import (
 	"fmt"
@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"runtime/debug"
 
+	"s3-service/internal/httpapi"
+
 	"github.com/go-chi/chi/v5/middleware"
 )
 
 // middleware that catches panics and returns a JSON error response instead of crashing the server
-func recoverJSON(logger *slog.Logger) func(http.Handler) http.Handler {
+func RecoverJSON(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
@@ -22,7 +24,7 @@ func recoverJSON(logger *slog.Logger) func(http.Handler) http.Handler {
 						"method", r.Method,
 						"request_id", middleware.GetReqID(r.Context()),
 					)
-					writeError(w, r, http.StatusInternalServerError, "internal_server_error", "An unexpected error occurred", nil)
+					httpapi.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", "An unexpected error occurred", nil)
 				}
 			}()
 
