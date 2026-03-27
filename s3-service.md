@@ -36,8 +36,8 @@ Standalone service used by Locket (and future projects) to securely access multi
 
 > JWT validation · client auth · per-bucket authorization
 
-- [ ] **2.1** JWT middleware: validate issuer, audience, expiry, signature `Go` `Auth` · 3 pts
-- [ ] **2.2** Role model: admin, project-client, read-only-client `Go` `Auth` `DB` · 2 pts
+- [x] **2.1** JWT middleware: validate issuer, audience, expiry, signature `Go` `Auth` · 3 pts
+- [x] **2.2** Role model: admin, project-client, read-only-client `Go` `Auth` `DB` · 2 pts
 - [ ] **2.3** Bucket connection ownership model by project/client ID and app principal (`app_id`) `Go` `DB` · 2 pts
 - [ ] **2.4** Prefix-level authorization (allow listed prefixes only) with per-app action scope (read/write/delete/list) `Go` `Auth` · 3 pts
 - [ ] **2.5** Service-to-service auth option (OAuth2 client credentials) for backend callers `Go` `Auth` · 2 pts

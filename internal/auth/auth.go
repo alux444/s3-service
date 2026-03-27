@@ -10,7 +10,16 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+type Role string
+
+const (
+	RoleAdmin          Role = "admin"
+	RoleProjectClient  Role = "project_client"
+	RoleReadOnlyClient Role = "read_only_client"
+)
+
 var (
+	ErrInvalidRole  = errors.New("invalid role")
 	ErrTokenExpired = errors.New("token expired")
 	ErrTokenInvalid = errors.New("invalid token")
 	ErrMissingClaim = errors.New("missing required claim")
@@ -26,6 +35,7 @@ type Config struct {
 type Claims struct {
 	Subject string `json:"sub"`
 	AppID   string `json:"app_id"`
+	Role    Role   `json:"role"`
 }
 
 type JWTVerifier struct {
@@ -108,9 +118,16 @@ func (v *JWTVerifier) VerifyWithContext(ctx context.Context, tokenString string)
 		return Claims{}, fmt.Errorf("%w: %w", ErrTokenInvalid, ErrMissingClaim)
 	}
 
+	roleRaw, _ := mc["role"].(string)
+	role, err := ParseRole(roleRaw)
+	if err != nil {
+		return Claims{}, fmt.Errorf("%w: %v", ErrTokenInvalid, err)
+	}
+
 	return Claims{
 		Subject: sub,
 		AppID:   appID,
+		Role:    role,
 	}, nil
 }
 
@@ -118,5 +135,14 @@ func (v *JWTVerifier) VerifyWithContext(ctx context.Context, tokenString string)
 func (v *JWTVerifier) Close() {
 	if v.jwks != nil {
 		v.jwks.EndBackground()
+	}
+}
+
+func ParseRole(raw string) (Role, error) {
+	switch Role(raw) {
+	case RoleAdmin, RoleProjectClient, RoleReadOnlyClient:
+		return Role(raw), nil
+	default:
+		return "", ErrInvalidRole
 	}
 }

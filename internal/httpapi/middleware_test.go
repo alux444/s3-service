@@ -140,13 +140,13 @@ func TestJWTAuthMiddleware(t *testing.T) {
 	})
 
 	t.Run("accepts case insensitive bearer and forwards claims", func(t *testing.T) {
-		v := &stubVerifier{claims: auth.Claims{Subject: "user-1", AppID: "app-1"}}
+		v := &stubVerifier{claims: auth.Claims{Subject: "user-1", AppID: "app-1", Role: auth.RoleAdmin}}
 		h := JWTAuthMiddleware(logger, v)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims, ok := ClaimsFromContext(r.Context())
 			if !ok {
 				t.Fatal("claims not found in context")
 			}
-			if claims.Subject != "user-1" || claims.AppID != "app-1" {
+			if claims.Subject != "user-1" || claims.AppID != "app-1" || claims.Role != auth.RoleAdmin {
 				t.Fatalf("unexpected claims: %+v", claims)
 			}
 			w.WriteHeader(http.StatusOK)
@@ -162,6 +162,25 @@ func TestJWTAuthMiddleware(t *testing.T) {
 		}
 		if v.token != "token-123" {
 			t.Fatalf("expected raw token token-123, got %s", v.token)
+		}
+	})
+	t.Run("invalid role verifier error maps reason", func(t *testing.T) {
+		v := &stubVerifier{err: auth.ErrInvalidRole}
+		h := JWTAuthMiddleware(logger, v)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			t.Fatal("next handler should not be called")
+		}))
+
+		req := httptest.NewRequest(http.MethodGet, "/v1/auth-check", nil)
+		req.Header.Set("Authorization", "Bearer token-with-invalid-role")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected status 401, got %d", rec.Code)
+		}
+		got := decodeAuthError(t, rec.Body)
+		if got.Error.Details == nil || got.Error.Details.Reason != "invalid" {
+			t.Fatalf("expected reason invalid, got %+v", got.Error.Details)
 		}
 	})
 }
