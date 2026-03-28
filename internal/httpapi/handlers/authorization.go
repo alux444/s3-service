@@ -7,5 +7,5 @@ import (
 )
 
 type AuthorizationService interface {
-	Authorize(ctx context.Context, claims auth.Claims, bucketName string, action auth.Action, objectKey string) auth.Decision
+	Authorize(ctx context.Context, request auth.AuthorizationRequest) auth.Decision
 }

@@ -14,6 +14,13 @@ type Decision struct {
 	Reason  string
 }
 
+type AuthorizationRequest struct {
+	Claims    Claims
+	BucketName string
+	Action    Action
+	ObjectKey string
+}
+
 const (
 	DecisionReasonBucketScope  = "bucket_scope"
 	DecisionReasonActionScope  = "action_scope"

@@ -18,6 +18,14 @@ type EffectiveAuthorizationPolicy struct {
 	PrincipalPrefixes  []string
 }
 
+type AuthorizationPolicyLookup struct {
+	ProjectID     string
+	AppID         string
+	PrincipalType string
+	PrincipalID   string
+	BucketName    string
+}
+
 type OwnershipRepository struct {
 	db *sql.DB
 }
@@ -30,8 +38,8 @@ func (r *OwnershipRepository) ListActiveBucketsForConnectionScope(ctx context.Co
 	return ListActiveBucketsForConnectionScope(ctx, r.db, projectID, appID)
 }
 
-func (r *OwnershipRepository) GetEffectiveAuthorizationPolicy(ctx context.Context, projectID string, appID string, principalID string, bucketName string) (EffectiveAuthorizationPolicy, error) {
-	return GetEffectiveAuthorizationPolicy(ctx, r.db, projectID, appID, principalID, bucketName)
+func (r *OwnershipRepository) GetEffectiveAuthorizationPolicy(ctx context.Context, lookup AuthorizationPolicyLookup) (EffectiveAuthorizationPolicy, error) {
+	return GetEffectiveAuthorizationPolicy(ctx, r.db, lookup)
 }
 
 func ListActiveBucketsForConnectionScope(ctx context.Context, db *sql.DB, projectID string, appID string) ([]string, error) {
@@ -66,9 +74,9 @@ func ListActiveBucketsForConnectionScope(ctx context.Context, db *sql.DB, projec
 	return buckets, nil
 }
 
-func GetEffectiveAuthorizationPolicy(ctx context.Context, db *sql.DB, projectID string, appID string, principalID string, bucketName string) (EffectiveAuthorizationPolicy, error) {
-	if projectID == "" || appID == "" || principalID == "" || bucketName == "" {
-		return EffectiveAuthorizationPolicy{}, fmt.Errorf("projectID, appID, principalID, and bucketName must be provided")
+func GetEffectiveAuthorizationPolicy(ctx context.Context, db *sql.DB, lookup AuthorizationPolicyLookup) (EffectiveAuthorizationPolicy, error) {
+	if lookup.ProjectID == "" || lookup.AppID == "" || lookup.PrincipalType == "" || lookup.PrincipalID == "" || lookup.BucketName == "" {
+		return EffectiveAuthorizationPolicy{}, fmt.Errorf("projectID, appID, principalType, principalID, and bucketName must be provided")
 	}
 
 	query := `
@@ -79,12 +87,13 @@ func GetEffectiveAuthorizationPolicy(ctx context.Context, db *sql.DB, projectID 
 		AND bc.app_id = $2 
 		AND bc.bucket_name = $3 
 		AND bc.is_active = true
-		AND ap.principal_id = $4 
+		AND ap.principal_type = $4
+		AND ap.principal_id = $5 
 		LIMIT 1
 		`
 
 	var policy EffectiveAuthorizationPolicy
-	err := db.QueryRowContext(ctx, query, projectID, appID, bucketName, principalID).Scan(
+	err := db.QueryRowContext(ctx, query, lookup.ProjectID, lookup.AppID, lookup.BucketName, lookup.PrincipalType, lookup.PrincipalID).Scan(
 		&policy.CanRead,
 		&policy.CanWrite,
 		&policy.CanDelete,

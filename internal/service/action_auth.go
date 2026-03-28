@@ -12,10 +12,7 @@ import (
 type AuthorizationRepository interface {
 	GetEffectiveAuthorizationPolicy(
 		ctx context.Context,
-		projectID string,
-		appID string,
-		principalID string,
-		bucketName string,
+		lookup database.AuthorizationPolicyLookup,
 	) (database.EffectiveAuthorizationPolicy, error)
 }
 
@@ -29,16 +26,29 @@ func NewAuthorizationService(repo AuthorizationRepository) *AuthorizationService
 
 func (s *AuthorizationService) Authorize(
 	ctx context.Context,
-	claims auth.Claims,
-	bucketName string,
-	action auth.Action,
-	objectKey string,
+	request auth.AuthorizationRequest,
 ) auth.Decision {
+	claims := request.Claims
+	bucketName := request.BucketName
+	action := request.Action
+	objectKey := request.ObjectKey
+
 	if claims.ProjectID == "" || claims.AppID == "" || claims.Subject == "" || bucketName == "" || !action.Valid() {
 		return auth.Decision{Allowed: false, Reason: auth.DecisionReasonInvalidInput}
 	}
 
-	policy, err := s.repo.GetEffectiveAuthorizationPolicy(ctx, claims.ProjectID, claims.AppID, claims.Subject, bucketName)
+	resolvedPrincipalType := claims.PrincipalType
+	if resolvedPrincipalType == "" {
+		resolvedPrincipalType = auth.PrincipalTypeUser
+	}
+
+	policy, err := s.repo.GetEffectiveAuthorizationPolicy(ctx, database.AuthorizationPolicyLookup{
+		ProjectID:     claims.ProjectID,
+		AppID:         claims.AppID,
+		PrincipalType: string(resolvedPrincipalType),
+		PrincipalID:   claims.Subject,
+		BucketName:    bucketName,
+	})
 	if err != nil {
 		if errors.Is(err, database.ErrPolicyNotFound) {
 			return auth.Decision{Allowed: false, Reason: auth.DecisionReasonBucketScope}

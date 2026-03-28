@@ -20,6 +20,7 @@ The JWT must include these claims:
 - `app_id`: application scope
 - `project_id`: project/tenant scope
 - `role`: one of `admin`, `project-client`, `read-only-client`
+- `principal_type`: `user` or `service` (if missing, defaults to `user`)
 
 Validation rules:
 
@@ -38,7 +39,21 @@ A principal is the caller identity. In code, this is the JWT `sub` claim.
 - Code field: `claims.Subject`
 - DB match target: `access_policies.principal_id`
 
-There is also a principal type in schema (`user` or `service`), but current effective-policy query matches by `principal_id` only.
+### Principal type
+
+Principal type tells the service what kind of caller this is:
+
+- `user`
+- `service`
+
+In code, this is the JWT `principal_type` claim and maps to `claims.PrincipalType`.
+
+In DB policy lookup, the service now matches on both:
+
+- `access_policies.principal_type`
+- `access_policies.principal_id`
+
+This prevents accidental overlap when a user and a service share the same ID string.
 
 ### Connection (bucket connection)
 
@@ -58,7 +73,7 @@ An access policy is per principal, attached to a connection.
 
 - Table: `access_policies`
 - Linked by: `bucket_connection_id`
-- Principal identity: `principal_id`
+- Principal identity: (`principal_type`, `principal_id`)
 - Role: `role`
 - Action booleans:
   - `can_read`
@@ -80,9 +95,10 @@ Main decision code:
 The service allows a request only if all checks pass:
 
 1. Input is valid (`project_id`, `app_id`, `sub`, bucket, action)
-2. A policy exists for the scoped connection + principal
-3. Requested action is allowed (`can_read/write/delete/list`)
-4. Object key is inside effective prefixes
+2. Principal type is resolved (`principal_type`, default `user` if missing)
+3. A policy exists for the scoped connection + principal identity (`principal_type` + `principal_id`)
+4. Requested action is allowed (`can_read/write/delete/list`)
+5. Object key is inside effective prefixes
 
 ### Effective prefixes (important)
 
@@ -142,11 +158,11 @@ Exists for audit trail data model, but current auth decision path shown above do
 
 1. Request hits `/v1/*` route (JWT middleware is applied).
 2. Middleware extracts Bearer token and verifies JWT.
-3. Claims (`sub`, `app_id`, `project_id`, `role`) are put in context.
+3. Claims (`sub`, `app_id`, `project_id`, `role`, `principal_type`) are put in context.
 4. Handler/service reads claims and calls authorization logic.
 5. Repository loads effective policy by joining:
    - `bucket_connections` (scoped by `project_id`, `app_id`, `bucket_name`, active)
-   - `access_policies` (scoped by `principal_id`)
+  - `access_policies` (scoped by `principal_type` and `principal_id`)
 6. Service checks action + prefix intersection.
 7. Allow or deny with a stable reason code.
 
@@ -159,4 +175,4 @@ Both are under JWT middleware.
 
 ## 8) Mental Model (One-Liner)
 
-JWT proves identity and scope (`sub`, `project_id`, `app_id`), then DB policy decides if that identity can do the requested action on the requested bucket/object prefix.
+JWT proves identity and scope (`sub`, `project_id`, `app_id`, `principal_type`), then DB policy decides if that exact principal can do the requested action on the requested bucket/object prefix.

@@ -12,17 +12,23 @@ import (
 
 type Role string
 
+type PrincipalType string
+
 const (
 	RoleAdmin          Role = "admin"
 	RoleProjectClient  Role = "project-client"
 	RoleReadOnlyClient Role = "read-only-client"
+
+	PrincipalTypeUser    PrincipalType = "user"
+	PrincipalTypeService PrincipalType = "service"
 )
 
 var (
-	ErrInvalidRole  = errors.New("invalid role")
-	ErrTokenExpired = errors.New("token expired")
-	ErrTokenInvalid = errors.New("invalid token")
-	ErrMissingClaim = errors.New("missing required claim")
+	ErrInvalidRole          = errors.New("invalid role")
+	ErrInvalidPrincipalType = errors.New("invalid principal type")
+	ErrTokenExpired         = errors.New("token expired")
+	ErrTokenInvalid         = errors.New("invalid token")
+	ErrMissingClaim         = errors.New("missing required claim")
 )
 
 type Config struct {
@@ -33,10 +39,11 @@ type Config struct {
 }
 
 type Claims struct {
-	Subject   string `json:"sub"`
-	AppID     string `json:"app_id"`
-	ProjectID string `json:"project_id"`
-	Role      Role   `json:"role"`
+	Subject       string        `json:"sub"`
+	AppID         string        `json:"app_id"`
+	ProjectID     string        `json:"project_id"`
+	Role          Role          `json:"role"`
+	PrincipalType PrincipalType `json:"principal_type"`
 }
 
 type JWTVerifier struct {
@@ -126,11 +133,22 @@ func (v *JWTVerifier) VerifyWithContext(ctx context.Context, tokenString string)
 		return Claims{}, fmt.Errorf("%w: %v", ErrTokenInvalid, err)
 	}
 
+	principalTypeRaw, _ := mc["principal_type"].(string)
+	if principalTypeRaw == "" {
+		principalTypeRaw = string(PrincipalTypeUser)
+	}
+
+	principalType, err := ParsePrincipalType(principalTypeRaw)
+	if err != nil {
+		return Claims{}, fmt.Errorf("%w: %v", ErrTokenInvalid, err)
+	}
+
 	return Claims{
-		Subject:   sub,
-		AppID:     appID,
-		ProjectID: projectID,
-		Role:      role,
+		Subject:       sub,
+		AppID:         appID,
+		ProjectID:     projectID,
+		Role:          role,
+		PrincipalType: principalType,
 	}, nil
 }
 
@@ -147,5 +165,14 @@ func ParseRole(raw string) (Role, error) {
 		return Role(raw), nil
 	default:
 		return "", ErrInvalidRole
+	}
+}
+
+func ParsePrincipalType(raw string) (PrincipalType, error) {
+	switch PrincipalType(raw) {
+	case PrincipalTypeUser, PrincipalTypeService:
+		return PrincipalType(raw), nil
+	default:
+		return "", ErrInvalidPrincipalType
 	}
 }
