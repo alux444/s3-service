@@ -15,10 +15,10 @@ type Decision struct {
 }
 
 type AuthorizationRequest struct {
-	Claims    Claims
+	Claims     Claims
 	BucketName string
-	Action    Action
-	ObjectKey string
+	Action     Action
+	ObjectKey  string
 }
 
 const (

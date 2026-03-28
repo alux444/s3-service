@@ -166,6 +166,49 @@ Exists for audit trail data model, but current auth decision path shown above do
 6. Service checks action + prefix intersection.
 7. Allow or deny with a stable reason code.
 
+### Concrete example: what the request is asking for
+
+Example request intent:
+
+- Caller wants to upload one object to `bucket-a`
+- Target object key is `uploads/avatars/user-1.png`
+- Requested capability is `write`
+
+Example HTTP shape (simplified):
+
+```http
+POST /v1/objects/upload HTTP/1.1
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "bucket_name": "bucket-a",
+  "object_key": "uploads/avatars/user-1.png"
+}
+```
+
+How auth interprets this request:
+
+1. Authentication asks: is this caller real and trusted?
+2. Authorization asks: can this exact principal (`principal_type` + `sub`) do `write` on `bucket-a` for key `uploads/avatars/user-1.png`?
+
+How the decision is made, step by step:
+
+1. JWT middleware validates signature, issuer, audience, expiry.
+2. Claims are extracted: `sub`, `project_id`, `app_id`, `role`, `principal_type`.
+3. Service resolves principal identity:
+  - principal type = `principal_type` (or `user` if omitted)
+  - principal id = `sub`
+4. DB lookup finds an active bucket connection for (`project_id`, `app_id`, `bucket_name`).
+5. DB lookup finds matching access policy for (`principal_type`, `principal_id`).
+6. Service checks action permission:
+  - `write` requires `can_write = true`
+7. Service checks prefix permission:
+  - compute intersection of `bucket_connections.allowed_prefixes` and `access_policies.prefix_allowlist`
+  - require `uploads/avatars/user-1.png` to start with one of those intersected prefixes
+8. If all checks pass, request is allowed; otherwise denied with a specific reason (`bucket_scope`, `action_scope`, `prefix_scope`, or `invalid_input`).
+
+
 ## 7) What Is Already Protected
 
 - `/v1/auth-check`: confirms authenticated claims
