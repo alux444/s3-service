@@ -70,11 +70,13 @@ func main() {
 
 	ownershipRepo := database.NewOwnershipRepository(db)
 	bucketService := service.NewBucketConnectionsService(ownershipRepo)
+	authorizationService := service.NewAuthorizationService(ownershipRepo)
 
 	handler := router.NewRouter(
 		logger,
 		httpmiddleware.JWTAuthMiddleware(logger, verifier),
 		bucketService,
+		authorizationService,
 	)
 	server := &http.Server{
 		Addr:         cfg.Addr(),
