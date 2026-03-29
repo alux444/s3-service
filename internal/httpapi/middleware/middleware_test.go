@@ -140,13 +140,13 @@ func TestJWTAuthMiddleware(t *testing.T) {
 	})
 
 	t.Run("accepts case insensitive bearer and forwards claims", func(t *testing.T) {
-		v := &stubVerifier{claims: auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleAdmin}}
+		v := &stubVerifier{claims: auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleAdmin, PrincipalType: auth.PrincipalTypeUser}}
 		h := JWTAuthMiddleware(logger, v)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims, ok := ClaimsFromContext(r.Context())
 			if !ok {
 				t.Fatal("claims not found in context")
 			}
-			if claims.Subject != "user-1" || claims.AppID != "app-1" || claims.Role != auth.RoleAdmin || claims.ProjectID != "project-1" {
+			if claims.Subject != "user-1" || claims.AppID != "app-1" || claims.Role != auth.RoleAdmin || claims.ProjectID != "project-1" || claims.PrincipalType != auth.PrincipalTypeUser {
 				t.Fatalf("unexpected claims: %+v", claims)
 			}
 			w.WriteHeader(http.StatusOK)
@@ -164,6 +164,30 @@ func TestJWTAuthMiddleware(t *testing.T) {
 			t.Fatalf("expected raw token token-123, got %s", v.token)
 		}
 	})
+
+	t.Run("forwards service principal claims", func(t *testing.T) {
+		v := &stubVerifier{claims: auth.Claims{Subject: "svc-images", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleProjectClient, PrincipalType: auth.PrincipalTypeService}}
+		h := JWTAuthMiddleware(logger, v)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims, ok := ClaimsFromContext(r.Context())
+			if !ok {
+				t.Fatal("claims not found in context")
+			}
+			if claims.Subject != "svc-images" || claims.PrincipalType != auth.PrincipalTypeService {
+				t.Fatalf("unexpected claims: %+v", claims)
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+
+		req := httptest.NewRequest(http.MethodGet, "/v1/auth-check", nil)
+		req.Header.Set("Authorization", "Bearer service-token")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", rec.Code)
+		}
+	})
+
 	t.Run("invalid role verifier error maps reason", func(t *testing.T) {
 		v := &stubVerifier{err: auth.ErrInvalidRole}
 		h := JWTAuthMiddleware(logger, v)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {

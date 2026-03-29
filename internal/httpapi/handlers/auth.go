@@ -15,9 +15,10 @@ func AuthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpapi.WriteOK(w, r, map[string]any{
-		"sub":        claims.Subject,
-		"app_id":     claims.AppID,
-		"project_id": claims.ProjectID,
-		"role":       claims.Role,
+		"sub":            claims.Subject,
+		"app_id":         claims.AppID,
+		"project_id":     claims.ProjectID,
+		"role":           claims.Role,
+		"principal_type": claims.PrincipalType,
 	})
 }
