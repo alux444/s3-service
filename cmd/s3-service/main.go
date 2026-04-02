@@ -69,14 +69,17 @@ func main() {
 	defer verifier.Close()
 
 	ownershipRepo := database.NewOwnershipRepository(db)
+	auditRepo := database.NewAuditRepository(db)
 	bucketService := service.NewBucketConnectionsService(ownershipRepo)
 	authorizationService := service.NewAuthorizationService(ownershipRepo)
+	auditService := service.NewAuditService(auditRepo)
 
 	handler := router.NewRouter(
 		logger,
 		httpmiddleware.JWTAuthMiddleware(logger, verifier),
 		bucketService,
 		authorizationService,
+		auditService,
 	)
 	server := &http.Server{
 		Addr:         cfg.Addr(),

@@ -12,7 +12,7 @@ import (
 	httpmiddleware "s3-service/internal/httpapi/middleware"
 )
 
-func NewRouter(logger *slog.Logger, authMW func(http.Handler) http.Handler, bucketService handlers.BucketConnectionService, authorizationService handlers.AuthorizationService) http.Handler {
+func NewRouter(logger *slog.Logger, authMW func(http.Handler) http.Handler, bucketService handlers.BucketConnectionService, authorizationService handlers.AuthorizationService, auditRecorder httpmiddleware.AuditEventRecorder) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
@@ -30,8 +30,13 @@ func NewRouter(logger *slog.Logger, authMW func(http.Handler) http.Handler, buck
 		httpapi.WriteError(w, req, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", nil)
 	})
 
+	var auditMW func(http.Handler) http.Handler
+	if auditRecorder != nil {
+		auditMW = httpmiddleware.AuditEventsMiddleware(logger, auditRecorder)
+	}
+
 	r.Get("/health", handlers.HealthHandler)
-	registerV1Routes(r, authMW, bucketService, authorizationService)
+	registerV1Routes(r, authMW, auditMW, bucketService, authorizationService)
 
 	return r
 }
