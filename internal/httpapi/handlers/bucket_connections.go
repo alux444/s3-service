@@ -11,7 +11,7 @@ import (
 )
 
 type BucketConnectionService interface {
-	ListForScope(ctx context.Context, projectID, appID string) ([]string, error)
+	ListForScope(ctx context.Context, projectID, appID string) ([]database.BucketConnection, error)
 	CreateForScope(ctx context.Context, projectID string, appID string, bucketName string, region string, roleARN string, externalID *string, allowedPrefixes []string) error
 }
 
@@ -21,6 +21,14 @@ type createBucketConnectionRequest struct {
 	RoleARN         string   `json:"role_arn"`
 	ExternalID      *string  `json:"external_id"`
 	AllowedPrefixes []string `json:"allowed_prefixes"`
+}
+
+type createBucketConnectionResponse struct {
+	Created bool `json:"created"`
+}
+
+type listBucketConnectionsResponse struct {
+	Buckets []database.BucketConnection `json:"buckets"`
 }
 
 func CreateBucketConnectionHandler(bucketService BucketConnectionService) http.HandlerFunc {
@@ -58,7 +66,7 @@ func CreateBucketConnectionHandler(bucketService BucketConnectionService) http.H
 			return
 		}
 
-		httpapi.WriteCreated(w, r, map[string]any{"created": true})
+		httpapi.WriteCreated(w, r, createBucketConnectionResponse{Created: true})
 	}
 }
 
@@ -75,8 +83,6 @@ func ListBucketConnectionsHandler(bucketService BucketConnectionService) http.Ha
 			return
 		}
 
-		httpapi.WriteOK(w, r, map[string]any{
-			"buckets": buckets,
-		})
+		httpapi.WriteOK(w, r, listBucketConnectionsResponse{Buckets: buckets})
 	}
 }

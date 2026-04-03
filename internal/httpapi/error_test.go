@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -59,17 +60,15 @@ func decodeErrorEnvelope(t *testing.T, body io.Reader) errorEnvelopeTestResponse
 	return got
 }
 
-func assertDetails(t *testing.T, raw json.RawMessage, want map[string]any) {
+func assertDetailsAs[T any](t *testing.T, raw json.RawMessage, want T) {
 	t.Helper()
 
-	var got map[string]any
+	var got T
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatalf("failed to unmarshal details: %v", err)
 	}
-	for k, v := range want {
-		if got[k] != v {
-			t.Errorf("details[%s]: expected %v, got %v", k, v, got[k])
-		}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("unexpected details: got %+v want %+v", got, want)
 	}
 }
 
@@ -81,7 +80,6 @@ func TestWriteErrorEnvelope(t *testing.T) {
 		message       string
 		details       httpapi.ErrorDetails
 		expectDetails bool
-		wantDetails   map[string]any
 	}{
 		{
 			name:          "without_details",
@@ -98,7 +96,6 @@ func TestWriteErrorEnvelope(t *testing.T) {
 			message:       "validation failed",
 			details:       httpapi.ValidationDetails{Field: "bucket", Reason: "required"},
 			expectDetails: true,
-			wantDetails:   map[string]any{"field": "bucket", "reason": "required"},
 		},
 		{
 			name:          "with_not_found_details",
@@ -107,7 +104,6 @@ func TestWriteErrorEnvelope(t *testing.T) {
 			message:       "resource not found",
 			details:       httpapi.NotFoundDetails{Resource: "image", ID: "img_123"},
 			expectDetails: true,
-			wantDetails:   map[string]any{"resource": "image", "id": "img_123"},
 		},
 	}
 
@@ -144,7 +140,14 @@ func TestWriteErrorEnvelope(t *testing.T) {
 				if len(got.Error.Details) == 0 {
 					t.Fatal("expected details to be present")
 				}
-				assertDetails(t, got.Error.Details, tc.wantDetails)
+				switch details := tc.details.(type) {
+				case httpapi.ValidationDetails:
+					assertDetailsAs(t, got.Error.Details, details)
+				case httpapi.NotFoundDetails:
+					assertDetailsAs(t, got.Error.Details, details)
+				default:
+					t.Fatalf("unsupported details type: %T", details)
+				}
 			} else if len(got.Error.Details) != 0 && string(got.Error.Details) != "null" {
 				t.Errorf("expected details to be omitted, got %s", string(got.Error.Details))
 			}
@@ -202,10 +205,7 @@ func TestRouterErrorEnvelopes(t *testing.T) {
 		if got.Error.Code != "not_found" {
 			t.Errorf("expected code not_found, got %s", got.Error.Code)
 		}
-		assertDetails(t, got.Error.Details, map[string]any{
-			"resource": "route",
-			"id":       "/missing",
-		})
+		assertDetailsAs(t, got.Error.Details, httpapi.NotFoundDetails{Resource: "route", ID: "/missing"})
 	})
 
 	t.Run("method_not_allowed_omits_details", func(t *testing.T) {
@@ -244,7 +244,6 @@ func TestWriteError_WithDomainDetails(t *testing.T) {
 		code        string
 		message     string
 		details     httpapi.ErrorDetails
-		wantDetails map[string]any
 	}{
 		{
 			name:        "auth_details",
@@ -252,7 +251,6 @@ func TestWriteError_WithDomainDetails(t *testing.T) {
 			code:        "auth_failed",
 			message:     "authentication failed",
 			details:     httpapi.AuthDetails{Reason: "expired"},
-			wantDetails: map[string]any{"reason": "expired"},
 		},
 		{
 			name:    "rate_limit_details",
@@ -260,11 +258,6 @@ func TestWriteError_WithDomainDetails(t *testing.T) {
 			code:    "throttle",
 			message: "rate limit exceeded",
 			details: httpapi.RateLimitDetails{RetryAfter: 30, Limit: 100, Remaining: 0},
-			wantDetails: map[string]any{
-				"retryAfter": float64(30),
-				"limit":      float64(100),
-				"remaining":  float64(0),
-			},
 		},
 		{
 			name:    "conflict_details",
@@ -272,11 +265,6 @@ func TestWriteError_WithDomainDetails(t *testing.T) {
 			code:    "conflict",
 			message: "resource already exists",
 			details: httpapi.ConflictDetails{Resource: "bucket_connection", Field: "bucket_name", Value: "my-bucket"},
-			wantDetails: map[string]any{
-				"resource": "bucket_connection",
-				"field":    "bucket_name",
-				"value":    "my-bucket",
-			},
 		},
 	}
 
@@ -304,7 +292,16 @@ func TestWriteError_WithDomainDetails(t *testing.T) {
 			if got.Error.RequestId == "" {
 				t.Error("expected requestId to be populated")
 			}
-			assertDetails(t, got.Error.Details, tc.wantDetails)
+			switch details := tc.details.(type) {
+			case httpapi.AuthDetails:
+				assertDetailsAs(t, got.Error.Details, details)
+			case httpapi.RateLimitDetails:
+				assertDetailsAs(t, got.Error.Details, details)
+			case httpapi.ConflictDetails:
+				assertDetailsAs(t, got.Error.Details, details)
+			default:
+				t.Fatalf("unsupported details type: %T", details)
+			}
 		})
 	}
 }

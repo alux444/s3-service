@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"s3-service/internal/database"
 )
 
 var ErrInvalidBucketConnectionInput = errors.New("invalid bucket connection input")
 
 type BucketConnectionsRepository interface {
-	ListActiveBucketsForConnectionScope(ctx context.Context, projectID string, appID string) ([]string, error)
+	ListActiveBucketsForConnectionScope(ctx context.Context, projectID string, appID string) ([]database.BucketConnection, error)
 	CreateBucketConnection(ctx context.Context, projectID string, appID string, bucketName string, region string, roleARN string, externalID *string, allowedPrefixes []string) error
 }
 
@@ -21,7 +23,7 @@ func NewBucketConnectionsService(repo BucketConnectionsRepository) *BucketConnec
 	return &BucketConnectionsService{repo: repo}
 }
 
-func (s *BucketConnectionsService) ListForScope(ctx context.Context, projectID, appID string) ([]string, error) {
+func (s *BucketConnectionsService) ListForScope(ctx context.Context, projectID, appID string) ([]database.BucketConnection, error) {
 	return s.repo.ListActiveBucketsForConnectionScope(ctx, projectID, appID)
 }
 

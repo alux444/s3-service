@@ -12,6 +12,14 @@ import (
 var ErrPolicyNotFound = errors.New("authorization policy not found")
 var ErrBucketConnectionAlreadyExists = errors.New("bucket connection already exists")
 
+type BucketConnection struct {
+	BucketName      string   `json:"bucket_name"`
+	Region          string   `json:"region"`
+	RoleARN         string   `json:"role_arn"`
+	ExternalID      *string  `json:"external_id"`
+	AllowedPrefixes []string `json:"allowed_prefixes"`
+}
+
 type EffectiveAuthorizationPolicy struct {
 	CanRead            bool
 	CanWrite           bool
@@ -37,7 +45,7 @@ func NewOwnershipRepository(db *sql.DB) *OwnershipRepository {
 	return &OwnershipRepository{db: db}
 }
 
-func (r *OwnershipRepository) ListActiveBucketsForConnectionScope(ctx context.Context, projectID string, appID string) ([]string, error) {
+func (r *OwnershipRepository) ListActiveBucketsForConnectionScope(ctx context.Context, projectID string, appID string) ([]BucketConnection, error) {
 	return ListActiveBucketsForConnectionScope(ctx, r.db, projectID, appID)
 }
 
@@ -58,13 +66,13 @@ func (r *OwnershipRepository) GetEffectiveAuthorizationPolicy(ctx context.Contex
 	return GetEffectiveAuthorizationPolicy(ctx, r.db, lookup)
 }
 
-func ListActiveBucketsForConnectionScope(ctx context.Context, db *sql.DB, projectID string, appID string) ([]string, error) {
+func ListActiveBucketsForConnectionScope(ctx context.Context, db *sql.DB, projectID string, appID string) ([]BucketConnection, error) {
 	if projectID == "" || appID == "" {
 		return nil, fmt.Errorf("projectID and appID must be provided")
 	}
 
 	rows, err := db.QueryContext(ctx, `
-		SELECT bucket_name 
+		SELECT bucket_name, region, role_arn, external_id, allowed_prefixes
 		FROM bucket_connections 
 		WHERE project_id = $1 AND app_id = $2 AND is_active = true
 		ORDER BY created_at DESC
@@ -74,13 +82,13 @@ func ListActiveBucketsForConnectionScope(ctx context.Context, db *sql.DB, projec
 	}
 	defer rows.Close()
 
-	var buckets []string
+	var buckets []BucketConnection
 	for rows.Next() {
-		var bucketName string
-		if err := rows.Scan(&bucketName); err != nil {
+		var bucket BucketConnection
+		if err := rows.Scan(&bucket.BucketName, &bucket.Region, &bucket.RoleARN, &bucket.ExternalID, &bucket.AllowedPrefixes); err != nil {
 			return nil, fmt.Errorf("failed to scan bucket connection row: %w", err)
 		}
-		buckets = append(buckets, bucketName)
+		buckets = append(buckets, bucket)
 	}
 
 	if err := rows.Err(); err != nil {

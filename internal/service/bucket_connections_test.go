@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"s3-service/internal/database"
 )
 
 type stubBucketConnectionsRepo struct {
-	buckets         []string
+	buckets         []database.BucketConnection
 	err             error
 	projectID       string
 	appID           string
@@ -18,7 +20,7 @@ type stubBucketConnectionsRepo struct {
 	allowedPrefixes []string
 }
 
-func (s *stubBucketConnectionsRepo) ListActiveBucketsForConnectionScope(_ context.Context, projectID string, appID string) ([]string, error) {
+func (s *stubBucketConnectionsRepo) ListActiveBucketsForConnectionScope(_ context.Context, projectID string, appID string) ([]database.BucketConnection, error) {
 	s.projectID = projectID
 	s.appID = appID
 	if s.err != nil {
@@ -43,7 +45,7 @@ func (s *stubBucketConnectionsRepo) CreateBucketConnection(_ context.Context, pr
 
 func TestBucketConnectionsService_ListForScope(t *testing.T) {
 	t.Run("forwards scope and returns buckets", func(t *testing.T) {
-		repo := &stubBucketConnectionsRepo{buckets: []string{"bucket-a", "bucket-b"}}
+		repo := &stubBucketConnectionsRepo{buckets: []database.BucketConnection{{BucketName: "bucket-a", Region: "us-east-1", RoleARN: "arn:aws:iam::123456789012:role/s3-a"}, {BucketName: "bucket-b", Region: "us-west-2", RoleARN: "arn:aws:iam::123456789012:role/s3-b"}}}
 		svc := NewBucketConnectionsService(repo)
 
 		got, err := svc.ListForScope(context.Background(), "project-1", "app-1")
@@ -53,7 +55,7 @@ func TestBucketConnectionsService_ListForScope(t *testing.T) {
 		if repo.projectID != "project-1" || repo.appID != "app-1" {
 			t.Fatalf("expected scope project-1/app-1, got %s/%s", repo.projectID, repo.appID)
 		}
-		if len(got) != 2 || got[0] != "bucket-a" || got[1] != "bucket-b" {
+		if len(got) != 2 || got[0].BucketName != "bucket-a" || got[1].BucketName != "bucket-b" {
 			t.Fatalf("unexpected buckets: %+v", got)
 		}
 	})

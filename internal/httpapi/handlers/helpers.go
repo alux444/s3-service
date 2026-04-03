@@ -18,7 +18,7 @@ func claimsOrUnauthorized(w http.ResponseWriter, r *http.Request) (auth.Claims, 
 	return claims, true
 }
 
-func decodeJSONOrBadRequest(w http.ResponseWriter, r *http.Request, dst any) bool {
+func decodeJSONOrBadRequest[T any](w http.ResponseWriter, r *http.Request, dst *T) bool {
 	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
 		httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid request body", httpapi.ValidationDetails{Field: "body", Reason: "invalid_json"})
 		return false

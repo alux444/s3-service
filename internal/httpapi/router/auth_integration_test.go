@@ -25,13 +25,17 @@ import (
 )
 
 type errorEnvelope struct {
-	Error *struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-		Details *struct {
-			Reason string `json:"reason"`
-		} `json:"details"`
-	} `json:"error"`
+	Error *errorBody `json:"error"`
+}
+
+type errorBody struct {
+	Code    string       `json:"code"`
+	Message string       `json:"message"`
+	Details *authDetails `json:"details"`
+}
+
+type authDetails struct {
+	Reason string `json:"reason"`
 }
 
 type integrationAuthRepo struct{}

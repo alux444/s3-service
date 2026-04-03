@@ -16,7 +16,7 @@ import (
 )
 
 type stubBucketConnectionService struct {
-	buckets         []string
+	buckets         []database.BucketConnection
 	err             error
 	projectID       string
 	appID           string
@@ -27,7 +27,7 @@ type stubBucketConnectionService struct {
 	allowedPrefixes []string
 }
 
-func (s *stubBucketConnectionService) ListForScope(_ context.Context, projectID, appID string) ([]string, error) {
+func (s *stubBucketConnectionService) ListForScope(_ context.Context, projectID, appID string) ([]database.BucketConnection, error) {
 	s.projectID = projectID
 	s.appID = appID
 	if s.err != nil {
@@ -52,9 +52,15 @@ func (s *stubBucketConnectionService) CreateForScope(_ context.Context, projectI
 
 type bucketConnectionsResponse struct {
 	Data *struct {
-		Buckets []string `json:"buckets"`
+		Buckets []struct {
+			BucketName      string   `json:"bucket_name"`
+			Region          string   `json:"region"`
+			RoleARN         string   `json:"role_arn"`
+			ExternalID      *string  `json:"external_id"`
+			AllowedPrefixes []string `json:"allowed_prefixes"`
+		} `json:"buckets"`
 	} `json:"data"`
-	Error any `json:"error"`
+	Error *apiErrorBody `json:"error"`
 }
 
 func TestListBucketConnectionsHandler(t *testing.T) {
@@ -73,7 +79,7 @@ func TestListBucketConnectionsHandler(t *testing.T) {
 	})
 
 	t.Run("forwards claim scope and returns buckets", func(t *testing.T) {
-		svc := &stubBucketConnectionService{buckets: []string{"bucket-a", "bucket-b"}}
+		svc := &stubBucketConnectionService{buckets: []database.BucketConnection{{BucketName: "bucket-a", Region: "us-east-1", RoleARN: "arn:aws:iam::123456789012:role/s3-a"}, {BucketName: "bucket-b", Region: "us-west-2", RoleARN: "arn:aws:iam::123456789012:role/s3-b"}}}
 		h := ListBucketConnectionsHandler(svc)
 
 		claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleAdmin}
@@ -97,7 +103,10 @@ func TestListBucketConnectionsHandler(t *testing.T) {
 		if got.Data == nil {
 			t.Fatal("expected data envelope")
 		}
-		if len(got.Data.Buckets) != 2 || got.Data.Buckets[0] != "bucket-a" || got.Data.Buckets[1] != "bucket-b" {
+		if len(got.Data.Buckets) != 2 || got.Data.Buckets[0].BucketName != "bucket-a" || got.Data.Buckets[1].BucketName != "bucket-b" {
+			t.Fatalf("unexpected buckets: %+v", got.Data.Buckets)
+		}
+		if got.Data.Buckets[0].Region != "us-east-1" || got.Data.Buckets[1].Region != "us-west-2" {
 			t.Fatalf("unexpected buckets: %+v", got.Data.Buckets)
 		}
 	})

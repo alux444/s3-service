@@ -21,7 +21,7 @@ func TestWriteJSON(t *testing.T) {
 
 	t.Run("writes correct status code", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		httpapi.WriteJSON(w, http.StatusTeapot, nil)
+		httpapi.WriteJSON[*struct{}](w, http.StatusTeapot, nil)
 
 		if w.Code != http.StatusTeapot {
 			t.Errorf("expected status %d, got %d", http.StatusTeapot, w.Code)
@@ -58,7 +58,7 @@ func TestWriteOK(t *testing.T) {
 
 		var got struct {
 			Data map[string]string `json:"data"`
-			Err  any               `json:"error"`
+			Err  *json.RawMessage  `json:"error"`
 		}
 		if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 			t.Fatalf("failed to decode: %v", err)
@@ -78,16 +78,16 @@ func TestWriteOK(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/", nil)
 
-		httpapi.WriteOK(w, r, nil)
+		httpapi.WriteOK[*struct{}](w, r, nil)
 
 		var got struct {
-			Data any `json:"data"`
+			Data *json.RawMessage `json:"data"`
 		}
 		if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 			t.Fatalf("failed to decode: %v", err)
 		}
 		if got.Data != nil {
-			t.Errorf("expected data to be nil, got %v", got.Data)
+			t.Errorf("expected data to be nil, got %s", string(*got.Data))
 		}
 	})
 }
@@ -108,7 +108,7 @@ func TestWriteCreated(t *testing.T) {
 
 		var got struct {
 			Data map[string]string `json:"data"`
-			Err  any               `json:"error"`
+			Err  *json.RawMessage  `json:"error"`
 		}
 		if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 			t.Fatalf("failed to decode: %v", err)

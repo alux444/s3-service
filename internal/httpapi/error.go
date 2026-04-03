@@ -60,7 +60,7 @@ type errorBody struct {
 }
 
 func WriteError(w http.ResponseWriter, r *http.Request, status int, code, message string, details ErrorDetails) {
-	WriteJSON(w, status, envelope[any]{
+	WriteJSON(w, status, envelope[struct{}]{
 		Error: &errorBody{
 			Code:      code,
 			Message:   message,

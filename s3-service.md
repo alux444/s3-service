@@ -51,7 +51,7 @@ Standalone service used by Locket (and future projects) to securely access multi
 
 > AssumeRole flow · temporary creds · private buckets only
 
-- [ ] **3.1** Store bucket connection metadata: bucket name, region, role ARN, external ID, allowed prefixes `Go` `DB` · 2 pts
+- [x] **3.1** Store bucket connection metadata: bucket name, region, role ARN, external ID, allowed prefixes `Go` `DB` · 2 pts
 - [ ] **3.2** STS AssumeRole client with cached short-lived sessions `Go` `S3` · 3 pts
 - [ ] **3.3** Enforce private bucket baseline and object ownership settings checks `Go` `S3` · 2 pts
 - [ ] **3.4** Upload helper with content type validation, max size checks, metadata support `Go` `S3` · 2 pts

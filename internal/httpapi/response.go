@@ -10,18 +10,18 @@ type envelope[T any] struct {
 	Error *errorBody `json:"error,omitempty"`
 }
 
-func WriteJSON(w http.ResponseWriter, status int, payload any) {
+func WriteJSON[T any](w http.ResponseWriter, status int, payload T) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func WriteOK(w http.ResponseWriter, _ *http.Request, payload any) {
-	WriteJSON(w, http.StatusOK, envelope[any]{Data: &payload})
+func WriteOK[T any](w http.ResponseWriter, _ *http.Request, payload T) {
+	WriteJSON(w, http.StatusOK, envelope[T]{Data: &payload})
 }
 
-func WriteCreated(w http.ResponseWriter, _ *http.Request, payload any) {
-	WriteJSON(w, http.StatusCreated, envelope[any]{Data: &payload})
+func WriteCreated[T any](w http.ResponseWriter, _ *http.Request, payload T) {
+	WriteJSON(w, http.StatusCreated, envelope[T]{Data: &payload})
 }
 
 func WriteNoContent(w http.ResponseWriter, _ *http.Request) {

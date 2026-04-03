@@ -22,16 +22,6 @@ func (s *stubObjectAuthorizationService) Authorize(_ context.Context, request au
 	return s.decision
 }
 
-type objectHandlerResponse struct {
-	Error *struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-		Details *struct {
-			Reason string `json:"reason"`
-		} `json:"details"`
-	} `json:"error"`
-}
-
 func TestUploadObjectHandler(t *testing.T) {
 	claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleProjectClient, PrincipalType: auth.PrincipalTypeUser}
 
@@ -66,7 +56,7 @@ func TestUploadObjectHandler(t *testing.T) {
 		if rec.Code != http.StatusNotImplemented {
 			t.Fatalf("expected status 501, got %d", rec.Code)
 		}
-		var got objectHandlerResponse
+		var got apiErrorEnvelope
 		if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
@@ -125,7 +115,7 @@ func TestObjectHandlers_ReturnNotImplementedWhenAuthorized(t *testing.T) {
 				t.Fatalf("expected status 501, got %d", rec.Code)
 			}
 
-			var got objectHandlerResponse
+			var got apiErrorEnvelope
 			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 				t.Fatalf("failed to decode response: %v", err)
 			}
