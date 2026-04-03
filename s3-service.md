@@ -43,7 +43,7 @@ Standalone service used by Locket (and future projects) to securely access multi
 - [x] **2.5** Service-to-service auth option (OAuth2 client credentials) for backend callers `Go` `Auth` · 2 pts
 - [x] **2.6** Security audit log for every upload/delete/presign call `Go` `DB` · 2 pts
 - [x] **2.7** Rate limit by caller identity + IP for abuse protection `Go` `Infra` · 2 pts
-- [ ] **2.8** Auth integration tests for invalid token, wrong audience, forbidden bucket/prefix, and app scope denial `Go` `Auth` · 2 pts
+- [x] **2.8** Auth integration tests for invalid token, wrong audience, forbidden bucket/prefix, and app scope denial `Go` `Auth` · 2 pts
 
 ---
 
