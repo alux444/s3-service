@@ -6,17 +6,25 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"s3-service/internal/auth"
+	"s3-service/internal/database"
 	httpmiddleware "s3-service/internal/httpapi/middleware"
+	"s3-service/internal/service"
 )
 
 type stubBucketConnectionService struct {
-	buckets   []string
-	err       error
-	projectID string
-	appID     string
+	buckets         []string
+	err             error
+	projectID       string
+	appID           string
+	bucketName      string
+	region          string
+	roleARN         string
+	externalID      *string
+	allowedPrefixes []string
 }
 
 func (s *stubBucketConnectionService) ListForScope(_ context.Context, projectID, appID string) ([]string, error) {
@@ -26,6 +34,20 @@ func (s *stubBucketConnectionService) ListForScope(_ context.Context, projectID,
 		return nil, s.err
 	}
 	return s.buckets, nil
+}
+
+func (s *stubBucketConnectionService) CreateForScope(_ context.Context, projectID string, appID string, bucketName string, region string, roleARN string, externalID *string, allowedPrefixes []string) error {
+	s.projectID = projectID
+	s.appID = appID
+	s.bucketName = bucketName
+	s.region = region
+	s.roleARN = roleARN
+	s.externalID = externalID
+	s.allowedPrefixes = allowedPrefixes
+	if s.err != nil {
+		return s.err
+	}
+	return nil
 }
 
 type bucketConnectionsResponse struct {
@@ -93,6 +115,101 @@ func TestListBucketConnectionsHandler(t *testing.T) {
 
 		if rec.Code != http.StatusInternalServerError {
 			t.Fatalf("expected status 500, got %d", rec.Code)
+		}
+	})
+}
+
+func TestCreateBucketConnectionHandler(t *testing.T) {
+	t.Run("returns unauthorized when claims are missing", func(t *testing.T) {
+		svc := &stubBucketConnectionService{}
+		h := CreateBucketConnectionHandler(svc)
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/bucket-connections", strings.NewReader(`{"bucket_name":"bucket-a","region":"us-east-1","role_arn":"arn:aws:iam::123456789012:role/s3"}`))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected status 401, got %d", rec.Code)
+		}
+	})
+
+	t.Run("returns bad request for invalid json", func(t *testing.T) {
+		svc := &stubBucketConnectionService{}
+		h := CreateBucketConnectionHandler(svc)
+
+		claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleAdmin}
+		req := httptest.NewRequest(http.MethodPost, "/v1/bucket-connections", strings.NewReader("{"))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", rec.Code)
+		}
+	})
+
+	t.Run("returns bad request when service rejects missing required fields", func(t *testing.T) {
+		svc := &stubBucketConnectionService{err: service.ErrInvalidBucketConnectionInput}
+		h := CreateBucketConnectionHandler(svc)
+
+		claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleAdmin}
+		body := `{"bucket_name":"","region":"us-east-1","role_arn":""}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/bucket-connections", strings.NewReader(body))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", rec.Code)
+		}
+	})
+
+	t.Run("creates connection for claim scope", func(t *testing.T) {
+		svc := &stubBucketConnectionService{}
+		h := CreateBucketConnectionHandler(svc)
+
+		claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleAdmin}
+		body := `{"bucket_name":"bucket-a","region":"us-east-1","role_arn":"arn:aws:iam::123456789012:role/s3","external_id":"ext-1","allowed_prefixes":["uploads/","avatars/"]}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/bucket-connections", strings.NewReader(body))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected status 201, got %d", rec.Code)
+		}
+		if svc.projectID != "project-1" || svc.appID != "app-1" {
+			t.Fatalf("expected scope project-1/app-1, got %s/%s", svc.projectID, svc.appID)
+		}
+		if svc.bucketName != "bucket-a" || svc.region != "us-east-1" || svc.roleARN == "" {
+			t.Fatalf("unexpected create args: bucket=%s region=%s role=%s", svc.bucketName, svc.region, svc.roleARN)
+		}
+		if svc.externalID == nil || *svc.externalID != "ext-1" {
+			t.Fatalf("expected external id ext-1, got %+v", svc.externalID)
+		}
+		if len(svc.allowedPrefixes) != 2 || svc.allowedPrefixes[0] != "uploads/" || svc.allowedPrefixes[1] != "avatars/" {
+			t.Fatalf("unexpected allowed prefixes: %+v", svc.allowedPrefixes)
+		}
+	})
+
+	t.Run("returns conflict when connection already exists", func(t *testing.T) {
+		svc := &stubBucketConnectionService{err: database.ErrBucketConnectionAlreadyExists}
+		h := CreateBucketConnectionHandler(svc)
+
+		claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleAdmin}
+		body := `{"bucket_name":"bucket-a","region":"us-east-1","role_arn":"arn:aws:iam::123456789012:role/s3"}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/bucket-connections", strings.NewReader(body))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected status 409, got %d", rec.Code)
 		}
 	})
 }

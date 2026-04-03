@@ -20,6 +20,7 @@ func registerV1Routes(r chi.Router, authMW func(http.Handler) http.Handler, audi
 		v1.Get("/auth-check", handlers.AuthCheckHandler)
 
 		if bucketService != nil {
+			v1.Post("/bucket-connections", handlers.CreateBucketConnectionHandler(bucketService))
 			v1.Get("/bucket-connections", handlers.ListBucketConnectionsHandler(bucketService))
 		}
 		if authorizationService != nil {

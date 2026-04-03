@@ -34,17 +34,20 @@ func objectOperationHandler(authorizationService AuthorizationService, action au
 	return func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := middleware.ClaimsFromContext(r.Context())
 		if !ok {
+			// TODO(cleanup): centralize repeated auth-missing error response used across handlers.
 			httpapi.WriteError(w, r, http.StatusUnauthorized, "auth_failed", "authentication required", httpapi.AuthDetails{Reason: "missing"})
 			return
 		}
 
 		var req objectRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			// TODO(cleanup): move repeated invalid-JSON response into a shared transport helper.
 			httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid request body", httpapi.ValidationDetails{Field: "body", Reason: "invalid_json"})
 			return
 		}
 
 		if req.BucketName == "" || req.ObjectKey == "" {
+			// TODO(cleanup): standardize required-field error builders to avoid duplicate field lists.
 			httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", "bucket_name and object_key are required", httpapi.MultiValidationDetails{Errors: []httpapi.ValidationDetails{{Field: "bucket_name", Reason: "required"}, {Field: "object_key", Reason: "required"}}})
 			return
 		}
@@ -60,6 +63,7 @@ func objectOperationHandler(authorizationService AuthorizationService, action au
 			return
 		}
 
+		// TODO(cleanup): keep these routes exposed for contract testing until storage orchestration is implemented.
 		httpapi.WriteError(w, r, http.StatusNotImplemented, "not_implemented", operation+" is not implemented yet", nil)
 	}
 }

@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var ErrPolicyNotFound = errors.New("authorization policy not found")
+var ErrBucketConnectionAlreadyExists = errors.New("bucket connection already exists")
 
 type EffectiveAuthorizationPolicy struct {
 	CanRead            bool
@@ -36,6 +39,19 @@ func NewOwnershipRepository(db *sql.DB) *OwnershipRepository {
 
 func (r *OwnershipRepository) ListActiveBucketsForConnectionScope(ctx context.Context, projectID string, appID string) ([]string, error) {
 	return ListActiveBucketsForConnectionScope(ctx, r.db, projectID, appID)
+}
+
+func (r *OwnershipRepository) CreateBucketConnection(
+	ctx context.Context,
+	projectID string,
+	appID string,
+	bucketName string,
+	region string,
+	roleARN string,
+	externalID *string,
+	allowedPrefixes []string,
+) error {
+	return CreateBucketConnection(ctx, r.db, projectID, appID, bucketName, region, roleARN, externalID, allowedPrefixes)
 }
 
 func (r *OwnershipRepository) GetEffectiveAuthorizationPolicy(ctx context.Context, lookup AuthorizationPolicyLookup) (EffectiveAuthorizationPolicy, error) {
@@ -72,6 +88,44 @@ func ListActiveBucketsForConnectionScope(ctx context.Context, db *sql.DB, projec
 	}
 
 	return buckets, nil
+}
+
+func CreateBucketConnection(
+	ctx context.Context,
+	db *sql.DB,
+	projectID string,
+	appID string,
+	bucketName string,
+	region string,
+	roleARN string,
+	externalID *string,
+	allowedPrefixes []string,
+) error {
+	if projectID == "" || appID == "" || bucketName == "" || region == "" || roleARN == "" {
+		return fmt.Errorf("projectID, appID, bucketName, region, and roleARN must be provided")
+	}
+
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO bucket_connections (
+			project_id,
+			app_id,
+			bucket_name,
+			region,
+			role_arn,
+			external_id,
+			allowed_prefixes,
+			is_active
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+	`, projectID, appID, bucketName, region, roleARN, externalID, allowedPrefixes)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return ErrBucketConnectionAlreadyExists
+		}
+		return fmt.Errorf("failed to create bucket connection: %w", err)
+	}
+
+	return nil
 }
 
 func GetEffectiveAuthorizationPolicy(ctx context.Context, db *sql.DB, lookup AuthorizationPolicyLookup) (EffectiveAuthorizationPolicy, error) {
