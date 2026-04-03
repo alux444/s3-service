@@ -135,7 +135,7 @@ func (v *JWTVerifier) VerifyWithContext(ctx context.Context, tokenString string)
 
 	principalTypeRaw, _ := mc["principal_type"].(string)
 	if principalTypeRaw == "" {
-		principalTypeRaw = string(PrincipalTypeUser)
+		return Claims{}, fmt.Errorf("%w: %w", ErrTokenInvalid, ErrMissingClaim)
 	}
 
 	principalType, err := ParsePrincipalType(principalTypeRaw)

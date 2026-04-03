@@ -102,7 +102,7 @@ func TestJWTVerifierVerifyWithContext_ServicePrincipal(t *testing.T) {
 	}
 }
 
-func TestJWTVerifierVerifyWithContext_DefaultsPrincipalTypeToUser(t *testing.T) {
+func TestJWTVerifierVerifyWithContext_RejectsMissingPrincipalType(t *testing.T) {
 	privateKey, jwksURL := newTestSigningKeyAndJWKS(t)
 
 	verifier, err := NewJWTVerifier(Config{
@@ -127,11 +127,11 @@ func TestJWTVerifierVerifyWithContext_DefaultsPrincipalTypeToUser(t *testing.T) 
 	})
 
 	claims, err := verifier.VerifyWithContext(context.Background(), token)
-	if err != nil {
-		t.Fatalf("expected token to verify, got error: %v", err)
+	if err == nil {
+		t.Fatal("expected verifier to reject token missing principal_type")
 	}
-	if claims.PrincipalType != PrincipalTypeUser {
-		t.Fatalf("expected principal type %q, got %q", PrincipalTypeUser, claims.PrincipalType)
+	if claims != (Claims{}) {
+		t.Fatalf("expected empty claims on error, got %+v", claims)
 	}
 }
 

@@ -94,7 +94,7 @@ func TestAuthorizationService_Authorize(t *testing.T) {
 		}
 	})
 
-	t.Run("defaults missing principal type to user", func(t *testing.T) {
+	t.Run("denies missing principal type as invalid input", func(t *testing.T) {
 		repo := &stubAuthorizationRepo{
 			policy: database.EffectiveAuthorizationPolicy{
 				CanRead:            true,
@@ -113,11 +113,8 @@ func TestAuthorizationService_Authorize(t *testing.T) {
 			Action:     auth.ActionRead,
 			ObjectKey:  "images/file.jpg",
 		})
-		if !d.Allowed {
-			t.Fatalf("expected allowed, got denied with reason %s", d.Reason)
-		}
-		if repo.principalType != string(auth.PrincipalTypeUser) {
-			t.Fatalf("expected default principalType %q, got %q", auth.PrincipalTypeUser, repo.principalType)
+		if d.Allowed || d.Reason != auth.DecisionReasonInvalidInput {
+			t.Fatalf("expected invalid_input deny, got %+v", d)
 		}
 	})
 

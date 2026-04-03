@@ -20,7 +20,7 @@ The JWT must include these claims:
 - `app_id`: application scope
 - `project_id`: project/tenant scope
 - `role`: one of `admin`, `project-client`, `read-only-client`
-- `principal_type`: `user` or `service` (if missing, defaults to `user`)
+- `principal_type`: `user` or `service` (required)
 
 Validation rules:
 
@@ -95,7 +95,7 @@ Main decision code:
 The service allows a request only if all checks pass:
 
 1. Input is valid (`project_id`, `app_id`, `sub`, bucket, action)
-2. Principal type is resolved (`principal_type`, default `user` if missing)
+2. Principal type is present and valid (`principal_type`)
 3. A policy exists for the scoped connection + principal identity (`principal_type` + `principal_id`)
 4. Requested action is allowed (`can_read/write/delete/list`)
 5. Object key is inside effective prefixes
@@ -197,7 +197,7 @@ How the decision is made, step by step:
 1. JWT middleware validates signature, issuer, audience, expiry.
 2. Claims are extracted: `sub`, `project_id`, `app_id`, `role`, `principal_type`.
 3. Service resolves principal identity:
-  - principal type = `principal_type` (or `user` if omitted)
+  - principal type = `principal_type`
   - principal id = `sub`
 4. DB lookup finds an active bucket connection for (`project_id`, `app_id`, `bucket_name`).
 5. DB lookup finds matching access policy for (`principal_type`, `principal_id`).

@@ -33,19 +33,14 @@ func (s *AuthorizationService) Authorize(
 	action := request.Action
 	objectKey := request.ObjectKey
 
-	if claims.ProjectID == "" || claims.AppID == "" || claims.Subject == "" || bucketName == "" || !action.Valid() {
+	if claims.ProjectID == "" || claims.AppID == "" || claims.Subject == "" || claims.PrincipalType == "" || bucketName == "" || !action.Valid() {
 		return auth.Decision{Allowed: false, Reason: auth.DecisionReasonInvalidInput}
-	}
-
-	resolvedPrincipalType := claims.PrincipalType
-	if resolvedPrincipalType == "" {
-		resolvedPrincipalType = auth.PrincipalTypeUser
 	}
 
 	policy, err := s.repo.GetEffectiveAuthorizationPolicy(ctx, database.AuthorizationPolicyLookup{
 		ProjectID:     claims.ProjectID,
 		AppID:         claims.AppID,
-		PrincipalType: string(resolvedPrincipalType),
+		PrincipalType: string(claims.PrincipalType),
 		PrincipalID:   claims.Subject,
 		BucketName:    bucketName,
 	})
