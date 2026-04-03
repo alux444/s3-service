@@ -4,13 +4,11 @@ import (
 	"net/http"
 
 	"s3-service/internal/httpapi"
-	"s3-service/internal/httpapi/middleware"
 )
 
 func AuthCheckHandler(w http.ResponseWriter, r *http.Request) {
-	claims, ok := middleware.ClaimsFromContext(r.Context())
+	claims, ok := claimsOrUnauthorized(w, r)
 	if !ok {
-		httpapi.WriteError(w, r, http.StatusUnauthorized, "auth_failed", "authentication required", httpapi.AuthDetails{Reason: "missing"})
 		return
 	}
 

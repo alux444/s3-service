@@ -1,12 +1,10 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"s3-service/internal/auth"
 	"s3-service/internal/httpapi"
-	"s3-service/internal/httpapi/middleware"
 )
 
 type objectRequest struct {
@@ -32,23 +30,18 @@ func PresignDownloadObjectHandler(authorizationService AuthorizationService) htt
 
 func objectOperationHandler(authorizationService AuthorizationService, action auth.Action, operation string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		claims, ok := middleware.ClaimsFromContext(r.Context())
+		claims, ok := claimsOrUnauthorized(w, r)
 		if !ok {
-			// TODO(cleanup): centralize repeated auth-missing error response used across handlers.
-			httpapi.WriteError(w, r, http.StatusUnauthorized, "auth_failed", "authentication required", httpapi.AuthDetails{Reason: "missing"})
 			return
 		}
 
 		var req objectRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			// TODO(cleanup): move repeated invalid-JSON response into a shared transport helper.
-			httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid request body", httpapi.ValidationDetails{Field: "body", Reason: "invalid_json"})
+		if !decodeJSONOrBadRequest(w, r, &req) {
 			return
 		}
 
 		if req.BucketName == "" || req.ObjectKey == "" {
-			// TODO(cleanup): standardize required-field error builders to avoid duplicate field lists.
-			httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", "bucket_name and object_key are required", httpapi.MultiValidationDetails{Errors: []httpapi.ValidationDetails{{Field: "bucket_name", Reason: "required"}, {Field: "object_key", Reason: "required"}}})
+			writeRequiredFieldsError(w, r, "bucket_name and object_key are required", "bucket_name", "object_key")
 			return
 		}
 
