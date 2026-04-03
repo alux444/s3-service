@@ -93,4 +93,30 @@ func TestAuditEventsMiddleware(t *testing.T) {
 			t.Fatalf("expected action auth-check, got %q", event.Action)
 		}
 	})
+
+	t.Run("records object route action name", func(t *testing.T) {
+		recorder := &stubAuditRecorder{}
+		h := middleware.RequestID(AuditEventsMiddleware(logger, recorder)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotImplemented)
+		})))
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/objects/upload", nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotImplemented {
+			t.Fatalf("expected status 501, got %d", rec.Code)
+		}
+		if len(recorder.events) != 1 {
+			t.Fatalf("expected 1 event, got %d", len(recorder.events))
+		}
+
+		event := recorder.events[0]
+		if event.Action != "objects.upload" {
+			t.Fatalf("expected action objects.upload, got %q", event.Action)
+		}
+		if event.Outcome != "error" {
+			t.Fatalf("expected error outcome for 501, got %q", event.Outcome)
+		}
+	})
 }
