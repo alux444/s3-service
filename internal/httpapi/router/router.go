@@ -34,9 +34,13 @@ func NewRouter(logger *slog.Logger, authMW func(http.Handler) http.Handler, buck
 	if auditRecorder != nil {
 		auditMW = httpmiddleware.AuditEventsMiddleware(logger, auditRecorder)
 	}
+	rateLimitMW := httpmiddleware.NewIdentityIPRateLimitMiddleware(
+		httpmiddleware.DefaultRateLimitPerWindow,
+		httpmiddleware.DefaultRateLimitWindow,
+	)
 
 	r.Get("/health", handlers.HealthHandler)
-	registerV1Routes(r, authMW, auditMW, bucketService, authorizationService)
+	registerV1Routes(r, authMW, auditMW, rateLimitMW, bucketService, authorizationService)
 
 	return r
 }
