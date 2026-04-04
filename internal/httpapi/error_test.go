@@ -239,18 +239,18 @@ func TestRouterErrorEnvelopes(t *testing.T) {
 
 func TestWriteError_WithDomainDetails(t *testing.T) {
 	tests := []struct {
-		name        string
-		status      int
-		code        string
-		message     string
-		details     httpapi.ErrorDetails
+		name    string
+		status  int
+		code    string
+		message string
+		details httpapi.ErrorDetails
 	}{
 		{
-			name:        "auth_details",
-			status:      http.StatusUnauthorized,
-			code:        "auth_failed",
-			message:     "authentication failed",
-			details:     httpapi.AuthDetails{Reason: "expired"},
+			name:    "auth_details",
+			status:  http.StatusUnauthorized,
+			code:    "auth_failed",
+			message: "authentication failed",
+			details: httpapi.AuthDetails{Reason: "expired"},
 		},
 		{
 			name:    "rate_limit_details",
