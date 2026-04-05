@@ -26,11 +26,6 @@ var defaultAllowedContentTypes = []string{
 }
 
 // UploadObjectInput captures all data needed for an S3 PutObject operation.
-//
-// WISHFUL THINKING (3.4):
-// - Add stricter metadata key/value validation rules.
-// - Consider adding checksum fields (sha256/md5) for integrity validation.
-// - Consider adding server-side encryption options (SSE-S3/SSE-KMS) as configurable policy.
 type UploadObjectInput struct {
 	BucketName  string
 	ObjectKey   string
@@ -43,10 +38,6 @@ type UploadObjectInput struct {
 }
 
 // UploadObjectResult provides useful return info for API responses and audit logs.
-//
-// WISHFUL THINKING (3.4):
-// - Include VersionID when bucket versioning is enabled.
-// - Include RequestCharged/StorageClass if needed for downstream cost analytics.
 type UploadObjectResult struct {
 	ETag string
 	Size int64
@@ -97,12 +88,6 @@ func WithUploadClientFactory(factory uploadClientFactory) UploadHelperOption {
 }
 
 // UploadHelper owns low-level upload concerns for S3.
-//
-// WISHFUL THINKING (3.4):
-// - Use AssumeRoleSessionCache to build per-bucket clients.
-// - Enforce allowlisted content types before PutObject.
-// - Enforce max object size before PutObject.
-// - Propagate typed validation errors so handlers can map to 4xx responses.
 type UploadHelper struct {
 	cache               uploadRoleConfigProvider
 	allowedContentTypes map[string]struct{}

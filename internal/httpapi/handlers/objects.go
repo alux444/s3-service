@@ -17,6 +17,22 @@ type objectRequest struct {
 	ObjectKey  string `json:"object_key"`
 }
 
+type objectUploadRequest struct {
+	BucketName  string            `json:"bucket_name"`
+	ObjectKey   string            `json:"object_key"`
+	ContentType string            `json:"content_type"`
+	ContentB64  string            `json:"content_b64"`
+	Metadata    map[string]string `json:"metadata"`
+}
+
+type objectUploadResponse struct {
+	Uploaded  bool   `json:"uploaded"`
+	Bucket    string `json:"bucket"`
+	ObjectKey string `json:"object_key"`
+	ETag      string `json:"etag,omitempty"`
+	Size      int64  `json:"size,omitempty"`
+}
+
 type ObjectUploadService interface {
 	UploadObject(ctx context.Context, input service.ObjectUploadInput) (service.ObjectUploadResult, error)
 }
@@ -91,6 +107,10 @@ func UploadObjectHandler(authorizationService AuthorizationService, uploadServic
 			Size:      result.Size,
 		})
 	}
+}
+
+func writeUploadNotImplemented(w http.ResponseWriter, r *http.Request) {
+	httpapi.WriteError(w, r, http.StatusNotImplemented, "not_implemented", "upload is not implemented yet", nil)
 }
 
 func DeleteObjectHandler(authorizationService AuthorizationService) http.HandlerFunc {

@@ -16,19 +16,11 @@ type ObjectUploadBucketRepository interface {
 }
 
 // ObjectUploader is the boundary between service logic and S3 adapter logic.
-//
-// WISHFUL THINKING (3.4):
-// - Add typed errors for unsupported content type and size limit exceeded.
-// - Add request context fields for richer audit logging.
 type ObjectUploader interface {
 	UploadObject(ctx context.Context, input ObjectUploadInput) (ObjectUploadResult, error)
 }
 
 // ObjectUploadInput is service-level input for object upload.
-//
-// WISHFUL THINKING (3.4):
-// - If upload policies vary by app, include policy scope fields here.
-// - Consider adding explicit checksum and encryption intent.
 type ObjectUploadInput struct {
 	BucketName  string
 	ObjectKey   string
@@ -48,11 +40,6 @@ type ObjectUploadResult struct {
 }
 
 // ObjectUploadService orchestrates business-level upload flow.
-//
-// WISHFUL THINKING (3.4):
-// - Resolve bucket connection metadata (region/role/external ID) by bucket_name + claim scope.
-// - Enforce business rules before delegating to uploader.
-// - Emit audit-friendly result details.
 type ObjectUploadService struct {
 	bucketRepo ObjectUploadBucketRepository
 	uploader   ObjectUploader
