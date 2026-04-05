@@ -7,8 +7,12 @@ import (
 	"s3-service/internal/service"
 )
 
+type objectDeleterHelper interface {
+	DeleteObject(ctx context.Context, input s3.DeleteObjectInput) (s3.DeleteObjectResult, error)
+}
+
 type S3ObjectDeleterAdapter struct {
-	helper *s3.DeleteHelper
+	helper objectDeleterHelper
 }
 
 func NewS3ObjectDeleterAdapter(helper *s3.DeleteHelper) *S3ObjectDeleterAdapter {

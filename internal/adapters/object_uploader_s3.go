@@ -7,8 +7,12 @@ import (
 	"s3-service/internal/service"
 )
 
+type objectUploaderHelper interface {
+	UploadObject(ctx context.Context, input s3.UploadObjectInput) (s3.UploadObjectResult, error)
+}
+
 type S3ObjectUploaderAdapter struct {
-	helper *s3.UploadHelper
+	helper objectUploaderHelper
 }
 
 func NewS3ObjectUploaderAdapter(helper *s3.UploadHelper) *S3ObjectUploaderAdapter {

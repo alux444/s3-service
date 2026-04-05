@@ -7,8 +7,12 @@ import (
 	"s3-service/internal/service"
 )
 
+type objectPresignerHelper interface {
+	PresignObject(ctx context.Context, input s3.PresignObjectInput) (s3.PresignObjectResult, error)
+}
+
 type S3ObjectPresignerAdapter struct {
-	helper *s3.PresignHelper
+	helper objectPresignerHelper
 }
 
 func NewS3ObjectPresignerAdapter(helper *s3.PresignHelper) *S3ObjectPresignerAdapter {
