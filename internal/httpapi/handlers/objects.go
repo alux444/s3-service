@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"time"
 
 	"s3-service/internal/auth"
 	"s3-service/internal/httpapi"
@@ -181,27 +182,39 @@ func DeleteObjectHandler(authorizationService AuthorizationService, deleteServic
 }
 
 func PresignUploadObjectHandler(authorizationService AuthorizationService) http.HandlerFunc {
-	return objectOperationHandler(authorizationService, auth.ActionWrite, "presign_upload")
+	return PresignUploadObjectHandlerWithService(authorizationService, nil)
+}
+
+func PresignUploadObjectHandlerWithService(authorizationService AuthorizationService, presignService ObjectPresignService) http.HandlerFunc {
+	return objectOperationHandler(authorizationService, presignService, auth.ActionWrite, service.PresignMethodPut)
 }
 
 func PresignDownloadObjectHandler(authorizationService AuthorizationService) http.HandlerFunc {
-	return objectOperationHandler(authorizationService, auth.ActionRead, "presign_download")
+	return PresignDownloadObjectHandlerWithService(authorizationService, nil)
 }
 
-func objectOperationHandler(authorizationService AuthorizationService, action auth.Action, operation string) http.HandlerFunc {
+func PresignDownloadObjectHandlerWithService(authorizationService AuthorizationService, presignService ObjectPresignService) http.HandlerFunc {
+	return objectOperationHandler(authorizationService, presignService, auth.ActionRead, service.PresignMethodGet)
+}
+
+func objectOperationHandler(authorizationService AuthorizationService, presignService ObjectPresignService, action auth.Action, method string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := claimsOrUnauthorized(w, r)
 		if !ok {
 			return
 		}
 
-		var req objectRequest
+		var req objectPresignRequest
 		if !decodeJSONOrBadRequest(w, r, &req) {
 			return
 		}
 
 		if req.BucketName == "" || req.ObjectKey == "" {
 			writeRequiredFieldsError(w, r, "bucket_name and object_key are required", "bucket_name", "object_key")
+			return
+		}
+		if method == service.PresignMethodPut && req.ContentType == "" {
+			writeRequiredFieldsError(w, r, "content_type is required", "content_type")
 			return
 		}
 
@@ -216,7 +229,38 @@ func objectOperationHandler(authorizationService AuthorizationService, action au
 			return
 		}
 
-		// TODO(cleanup): keep these routes exposed for contract testing until storage orchestration is implemented.
-		httpapi.WriteError(w, r, http.StatusNotImplemented, "not_implemented", operation+" is not implemented yet", nil)
+		if presignService == nil {
+			httpapi.WriteError(w, r, http.StatusNotImplemented, "not_implemented", "presign is not implemented yet", nil)
+			return
+		}
+
+		result, err := presignService.PresignObject(r.Context(), service.ObjectPresignInput{
+			BucketName:  req.BucketName,
+			ObjectKey:   req.ObjectKey,
+			ProjectID:   claims.ProjectID,
+			AppID:       claims.AppID,
+			Method:      method,
+			ExpiresIn:   time.Duration(req.ExpiresInSeconds) * time.Second,
+			ContentType: req.ContentType,
+		})
+		if err != nil {
+			switch {
+			case errors.Is(err, service.ErrInvalidObjectPresignInput), errors.Is(err, s3.ErrInvalidAssumeRoleInput), errors.Is(err, s3.ErrUnsupportedPresignMethod):
+				httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", err.Error(), httpapi.ValidationDetails{Field: "presign", Reason: "invalid_input"})
+				return
+			case errors.Is(err, service.ErrBucketConnectionNotFound):
+				httpapi.WriteError(w, r, http.StatusNotFound, "not_found", "bucket connection not found for scope", httpapi.NotFoundDetails{Resource: "bucket_connection", ID: req.BucketName})
+				return
+			default:
+				httpapi.WriteError(w, r, http.StatusBadGateway, "upstream_failure", "failed to presign object operation", nil)
+				return
+			}
+		}
+
+		httpapi.WriteOK(w, r, objectPresignResponse{
+			Method:    result.Method,
+			URL:       result.URL,
+			ExpiresIn: int64(result.ExpiresIn / time.Second),
+		})
 	}
 }

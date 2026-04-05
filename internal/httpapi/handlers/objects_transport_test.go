@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"s3-service/internal/auth"
 	httpmiddleware "s3-service/internal/httpapi/middleware"
@@ -48,6 +49,20 @@ func (s *stubObjectDeleteService) DeleteObject(_ context.Context, input service.
 	s.input = input
 	if s.err != nil {
 		return service.ObjectDeleteResult{}, s.err
+	}
+	return s.result, nil
+}
+
+type stubObjectPresignService struct {
+	result service.ObjectPresignResult
+	err    error
+	input  service.ObjectPresignInput
+}
+
+func (s *stubObjectPresignService) PresignObject(_ context.Context, input service.ObjectPresignInput) (service.ObjectPresignResult, error) {
+	s.input = input
+	if s.err != nil {
+		return service.ObjectPresignResult{}, s.err
 	}
 	return s.result, nil
 }
@@ -165,7 +180,7 @@ func TestUploadObjectHandler(t *testing.T) {
 
 func TestPresignDownloadObjectHandler_UsesReadAction(t *testing.T) {
 	authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: false, Reason: auth.DecisionReasonActionScope}}
-	h := PresignDownloadObjectHandler(authz)
+	h := PresignDownloadObjectHandlerWithService(authz, nil)
 
 	claims := auth.Claims{Subject: "svc-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleProjectClient, PrincipalType: auth.PrincipalTypeService}
 	req := httptest.NewRequest(http.MethodPost, "/v1/objects/presign-download", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"images/a.jpg"}`))
@@ -257,19 +272,19 @@ func TestObjectHandlers_ReturnNotImplementedWhenAuthorized(t *testing.T) {
 		name       string
 		method     string
 		path       string
-		handlerFn  func(AuthorizationService) http.HandlerFunc
+		handlerFn  func(AuthorizationService, ObjectPresignService) http.HandlerFunc
 		wantAction auth.Action
 	}{
-		{name: "presign upload", method: http.MethodPost, path: "/v1/objects/presign-upload", handlerFn: PresignUploadObjectHandler, wantAction: auth.ActionWrite},
-		{name: "presign download", method: http.MethodPost, path: "/v1/objects/presign-download", handlerFn: PresignDownloadObjectHandler, wantAction: auth.ActionRead},
+		{name: "presign upload", method: http.MethodPost, path: "/v1/objects/presign-upload", handlerFn: PresignUploadObjectHandlerWithService, wantAction: auth.ActionWrite},
+		{name: "presign download", method: http.MethodPost, path: "/v1/objects/presign-download", handlerFn: PresignDownloadObjectHandlerWithService, wantAction: auth.ActionRead},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
-			h := tc.handlerFn(authz)
+			h := tc.handlerFn(authz, nil)
 
-			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg"}`))
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg","content_type":"image/jpeg"}`))
 			req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
 			rec := httptest.NewRecorder()
 
@@ -290,5 +305,28 @@ func TestObjectHandlers_ReturnNotImplementedWhenAuthorized(t *testing.T) {
 				t.Fatalf("expected action %q, got %q", tc.wantAction, authz.request.Action)
 			}
 		})
+	}
+}
+
+func TestPresignUploadObjectHandler_Success(t *testing.T) {
+	claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleProjectClient, PrincipalType: auth.PrincipalTypeUser}
+	authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+	presignSvc := &stubObjectPresignService{result: service.ObjectPresignResult{Method: service.PresignMethodPut, URL: "https://example.test/presigned", ExpiresIn: 75 * time.Second}}
+	h := PresignUploadObjectHandlerWithService(authz, presignSvc)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/objects/presign-upload", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg","content_type":"image/jpeg","expires_in_seconds":75}`))
+	req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if presignSvc.input.Method != service.PresignMethodPut {
+		t.Fatalf("expected method PUT, got %q", presignSvc.input.Method)
+	}
+	if presignSvc.input.ProjectID != "project-1" || presignSvc.input.AppID != "app-1" {
+		t.Fatalf("unexpected project/app in presign input: %+v", presignSvc.input)
 	}
 }

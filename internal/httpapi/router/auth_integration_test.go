@@ -68,6 +68,7 @@ func TestAuthIntegration_InvalidToken(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/auth-check", nil)
@@ -95,6 +96,7 @@ func TestAuthIntegration_WrongAudience(t *testing.T) {
 	r := router.NewRouter(
 		testLogger(),
 		httpmiddleware.JWTAuthMiddleware(testLogger(), verifier),
+		nil,
 		nil,
 		nil,
 		nil,
@@ -144,6 +146,7 @@ func TestAuthIntegration_ForbiddenPrefixScope(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	token := signedToken(t, privateKey, map[string]any{
@@ -186,6 +189,7 @@ func TestAuthIntegration_AppScopeDenial(t *testing.T) {
 		httpmiddleware.JWTAuthMiddleware(testLogger(), verifier),
 		nil,
 		authzSvc,
+		nil,
 		nil,
 		nil,
 		nil,
