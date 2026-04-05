@@ -56,7 +56,7 @@ Standalone service used by Locket (and future projects) to securely access multi
 - [x] **3.3** Enforce private bucket baseline and object ownership settings checks `Go` `S3` · 2 pts
 - [x] **3.4** Upload helper with content type validation, max size checks, metadata support `Go` `S3` · 2 pts
 - [x] **3.5** Delete helper with prefix guardrails and soft-fail idempotency `Go` `S3` · 2 pts
-- [ ] **3.6** Presign helper for GET and PUT with short expirations `Go` `S3` · 2 pts
+- [x] **3.6** Presign helper for GET and PUT with short expirations `Go` `S3` · 2 pts
 - [ ] **3.7** Retry strategy for throttling and transient AWS errors `Go` `S3` · 2 pts
 - [ ] **3.8** Integration tests against real AWS test bucket path or localstack fallback `Go` `S3` · 1 pt
 

@@ -11,7 +11,6 @@ import (
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-var ErrPresignNotImplemented = errors.New("s3 presign helper not implemented")
 var ErrUnsupportedPresignMethod = errors.New("unsupported presign method")
 
 type PresignObjectInput struct {
@@ -133,5 +132,5 @@ func (h *PresignHelper) PresignObject(ctx context.Context, input PresignObjectIn
 		return result, nil
 	}
 
-	return PresignObjectResult{}, ErrPresignNotImplemented
+	return PresignObjectResult{}, fmt.Errorf("%w: %s", ErrUnsupportedPresignMethod, method)
 }
