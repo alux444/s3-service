@@ -7,6 +7,7 @@ import (
 
 	"s3-service/internal/database"
 	"s3-service/internal/httpapi"
+	"s3-service/internal/s3"
 	"s3-service/internal/service"
 )
 
@@ -56,6 +57,10 @@ func CreateBucketConnectionHandler(bucketService BucketConnectionService) http.H
 		if err != nil {
 			if errors.Is(err, service.ErrInvalidBucketConnectionInput) {
 				writeRequiredFieldsError(w, r, "bucket_name, region, and role_arn are required", "bucket_name", "region", "role_arn")
+				return
+			}
+			if errors.Is(err, s3.ErrBucketSecurityBaselineViolation) {
+				httpapi.WriteError(w, r, http.StatusBadRequest, "bucket_security_baseline_failed", err.Error(), httpapi.ValidationDetails{Field: "bucket_name", Reason: "bucket must be private and enforce bucket owner object ownership"})
 				return
 			}
 			if errors.Is(err, database.ErrBucketConnectionAlreadyExists) {

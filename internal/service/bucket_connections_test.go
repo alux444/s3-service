@@ -8,6 +8,22 @@ import (
 	"s3-service/internal/database"
 )
 
+type stubBucketSecurityValidator struct {
+	err        error
+	bucketName string
+	region     string
+	roleARN    string
+	externalID *string
+}
+
+func (s *stubBucketSecurityValidator) ValidateBucketConnection(_ context.Context, bucketName string, region string, roleARN string, externalID *string) error {
+	s.bucketName = bucketName
+	s.region = region
+	s.roleARN = roleARN
+	s.externalID = externalID
+	return s.err
+}
+
 type stubBucketConnectionsRepo struct {
 	buckets         []database.BucketConnection
 	err             error
@@ -67,6 +83,38 @@ func TestBucketConnectionsService_ListForScope(t *testing.T) {
 		_, err := svc.ListForScope(context.Background(), "project-1", "app-1")
 		if err == nil {
 			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("runs bucket security validator before save", func(t *testing.T) {
+		externalID := "external-1"
+		repo := &stubBucketConnectionsRepo{}
+		validator := &stubBucketSecurityValidator{}
+		svc := NewBucketConnectionsService(repo, WithBucketConnectionSecurityValidator(validator))
+
+		err := svc.CreateForScope(context.Background(), "project-1", "app-1", "bucket-a", "us-east-1", "arn:aws:iam::123456789012:role/s3-service", &externalID, nil)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if validator.bucketName != "bucket-a" || validator.region != "us-east-1" || validator.roleARN == "" {
+			t.Fatalf("unexpected validator args: bucket=%s region=%s role=%s", validator.bucketName, validator.region, validator.roleARN)
+		}
+		if repo.bucketName != "bucket-a" {
+			t.Fatalf("expected repo create call, got bucket=%s", repo.bucketName)
+		}
+	})
+
+	t.Run("returns validator error and skips save", func(t *testing.T) {
+		repo := &stubBucketConnectionsRepo{}
+		validator := &stubBucketSecurityValidator{err: errors.New("bucket security baseline violation")}
+		svc := NewBucketConnectionsService(repo, WithBucketConnectionSecurityValidator(validator))
+
+		err := svc.CreateForScope(context.Background(), "project-1", "app-1", "bucket-a", "us-east-1", "arn:aws:iam::123456789012:role/s3-service", nil, nil)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if repo.bucketName != "" {
+			t.Fatalf("expected repository create not called, got bucket=%s", repo.bucketName)
 		}
 	})
 }

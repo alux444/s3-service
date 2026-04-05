@@ -12,6 +12,7 @@ import (
 	"s3-service/internal/auth"
 	"s3-service/internal/database"
 	httpmiddleware "s3-service/internal/httpapi/middleware"
+	"s3-service/internal/s3"
 	"s3-service/internal/service"
 )
 
@@ -219,6 +220,30 @@ func TestCreateBucketConnectionHandler(t *testing.T) {
 
 		if rec.Code != http.StatusConflict {
 			t.Fatalf("expected status 409, got %d", rec.Code)
+		}
+	})
+
+	t.Run("returns bad request when bucket security baseline check fails", func(t *testing.T) {
+		svc := &stubBucketConnectionService{err: &s3.BucketSecurityBaselineError{BucketName: "bucket-a", Reasons: []string{"bucket policy allows public access"}}}
+		h := CreateBucketConnectionHandler(svc)
+
+		claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleAdmin}
+		body := `{"bucket_name":"bucket-a","region":"us-east-1","role_arn":"arn:aws:iam::123456789012:role/s3"}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/bucket-connections", strings.NewReader(body))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", rec.Code)
+		}
+		var got apiErrorEnvelope
+		if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+		if got.Error == nil || got.Error.Code != "bucket_security_baseline_failed" {
+			t.Fatalf("expected bucket_security_baseline_failed, got %+v", got.Error)
 		}
 	})
 }

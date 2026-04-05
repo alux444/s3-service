@@ -15,12 +15,29 @@ type BucketConnectionsRepository interface {
 	CreateBucketConnection(ctx context.Context, projectID string, appID string, bucketName string, region string, roleARN string, externalID *string, allowedPrefixes []string) error
 }
 
-type BucketConnectionsService struct {
-	repo BucketConnectionsRepository
+type BucketConnectionSecurityValidator interface {
+	ValidateBucketConnection(ctx context.Context, bucketName string, region string, roleARN string, externalID *string) error
 }
 
-func NewBucketConnectionsService(repo BucketConnectionsRepository) *BucketConnectionsService {
-	return &BucketConnectionsService{repo: repo}
+type BucketConnectionsServiceOption func(*BucketConnectionsService)
+
+func WithBucketConnectionSecurityValidator(validator BucketConnectionSecurityValidator) BucketConnectionsServiceOption {
+	return func(s *BucketConnectionsService) {
+		s.validator = validator
+	}
+}
+
+type BucketConnectionsService struct {
+	repo      BucketConnectionsRepository
+	validator BucketConnectionSecurityValidator
+}
+
+func NewBucketConnectionsService(repo BucketConnectionsRepository, opts ...BucketConnectionsServiceOption) *BucketConnectionsService {
+	svc := &BucketConnectionsService{repo: repo}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
 }
 
 func (s *BucketConnectionsService) ListForScope(ctx context.Context, projectID, appID string) ([]database.BucketConnection, error) {
@@ -39,6 +56,12 @@ func (s *BucketConnectionsService) CreateForScope(
 ) error {
 	if projectID == "" || appID == "" || bucketName == "" || region == "" || roleARN == "" {
 		return fmt.Errorf("%w: projectID, appID, bucketName, region, and roleARN are required", ErrInvalidBucketConnectionInput)
+	}
+
+	if s.validator != nil {
+		if err := s.validator.ValidateBucketConnection(ctx, bucketName, region, roleARN, externalID); err != nil {
+			return err
+		}
 	}
 
 	return s.repo.CreateBucketConnection(ctx, projectID, appID, bucketName, region, roleARN, externalID, allowedPrefixes)

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/joho/godotenv"
 
 	"s3-service/internal/auth"
@@ -16,6 +17,7 @@ import (
 	"s3-service/internal/database"
 	httpmiddleware "s3-service/internal/httpapi/middleware"
 	"s3-service/internal/httpapi/router"
+	"s3-service/internal/s3"
 	"s3-service/internal/service"
 )
 
@@ -70,7 +72,17 @@ func main() {
 
 	ownershipRepo := database.NewOwnershipRepository(db)
 	auditRepo := database.NewAuditRepository(db)
-	bucketService := service.NewBucketConnectionsService(ownershipRepo)
+	assumeRoleCache, err := s3.NewAssumeRoleSessionCache(context.Background(), aws.Config{})
+	if err != nil {
+		logger.Error("failed to initialize assume role cache", "error", err)
+		os.Exit(1)
+	}
+	bucketBaselineChecker := s3.NewBucketSecurityBaselineChecker(assumeRoleCache)
+
+	bucketService := service.NewBucketConnectionsService(
+		ownershipRepo,
+		service.WithBucketConnectionSecurityValidator(bucketBaselineChecker),
+	)
 	authorizationService := service.NewAuthorizationService(ownershipRepo)
 	auditService := service.NewAuditService(auditRepo)
 
