@@ -67,6 +67,15 @@ func (s *ObjectPresignService) PresignObject(ctx context.Context, input ObjectPr
 	if input.ProjectID == "" || input.AppID == "" || input.BucketName == "" || input.ObjectKey == "" || input.Method == "" {
 		return ObjectPresignResult{}, fmt.Errorf("%w: project_id, app_id, bucket_name, object_key, and method are required", ErrInvalidObjectPresignInput)
 	}
+
+	method := strings.ToUpper(strings.TrimSpace(input.Method))
+	if method != PresignMethodGet && method != PresignMethodPut {
+		return ObjectPresignResult{}, fmt.Errorf("%w: method must be GET or PUT", ErrInvalidObjectPresignInput)
+	}
+	if method == PresignMethodPut && strings.TrimSpace(input.ContentType) == "" {
+		return ObjectPresignResult{}, fmt.Errorf("%w: content_type is required for PUT presign", ErrInvalidObjectPresignInput)
+	}
+
 	if s.bucketRepo == nil {
 		return ObjectPresignResult{}, errors.New("object presign bucket repository dependency is not configured")
 	}
@@ -74,12 +83,44 @@ func (s *ObjectPresignService) PresignObject(ctx context.Context, input ObjectPr
 		return ObjectPresignResult{}, errors.New("object presigner dependency is not configured")
 	}
 
-	// WISHFUL THINKING (3.6):
-	// 1) List bucket connections for scope and resolve selected bucket metadata
-	// 2) Return ErrBucketConnectionNotFound when no scope match exists
-	// 3) Apply method-specific defaults for ExpiresIn (short-lived)
-	// 4) Delegate to presigner and return normalized output
-	return ObjectPresignResult{}, ErrObjectPresignNotImplemented
+	buckets, err := s.bucketRepo.ListActiveBucketsForConnectionScope(ctx, input.ProjectID, input.AppID)
+	if err != nil {
+		return ObjectPresignResult{}, fmt.Errorf("list bucket connections for presign: %w", err)
+	}
+
+	var selectedBucket ObjectPresignInput
+	found := false
+	for i := range buckets {
+		if buckets[i].BucketName == input.BucketName {
+			selectedBucket = ObjectPresignInput{
+				BucketName: input.BucketName,
+				ObjectKey:  input.ObjectKey,
+				ProjectID:  input.ProjectID,
+				AppID:      input.AppID,
+				Region:     buckets[i].Region,
+				RoleARN:    buckets[i].RoleARN,
+				ExternalID: buckets[i].ExternalID,
+				Method:     method,
+				ExpiresIn:  normalizePresignTTL(method, input.ExpiresIn),
+			}
+			if method == PresignMethodPut {
+				selectedBucket.ContentType = input.ContentType
+			}
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return ObjectPresignResult{}, fmt.Errorf("%w: %s", ErrBucketConnectionNotFound, input.BucketName)
+	}
+
+	result, err := s.presigner.PresignObject(ctx, selectedBucket)
+	if err != nil {
+		return ObjectPresignResult{}, err
+	}
+
+	return result, nil
 }
 
 func normalizePresignTTL(method string, requested time.Duration) time.Duration {
