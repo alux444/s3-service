@@ -1,10 +1,15 @@
 package handlers
 
 import (
+	"context"
+	"encoding/base64"
+	"errors"
 	"net/http"
 
 	"s3-service/internal/auth"
 	"s3-service/internal/httpapi"
+	"s3-service/internal/s3"
+	"s3-service/internal/service"
 )
 
 type objectRequest struct {
@@ -12,8 +17,80 @@ type objectRequest struct {
 	ObjectKey  string `json:"object_key"`
 }
 
-func UploadObjectHandler(authorizationService AuthorizationService) http.HandlerFunc {
-	return objectOperationHandler(authorizationService, auth.ActionWrite, "upload")
+type ObjectUploadService interface {
+	UploadObject(ctx context.Context, input service.ObjectUploadInput) (service.ObjectUploadResult, error)
+}
+
+func UploadObjectHandler(authorizationService AuthorizationService, uploadService ObjectUploadService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := claimsOrUnauthorized(w, r)
+		if !ok {
+			return
+		}
+
+		var req objectUploadRequest
+		if !decodeJSONOrBadRequest(w, r, &req) {
+			return
+		}
+
+		if req.BucketName == "" || req.ObjectKey == "" || req.ContentType == "" || req.ContentB64 == "" {
+			writeRequiredFieldsError(w, r, "bucket_name, object_key, content_type, and content_b64 are required", "bucket_name", "object_key", "content_type", "content_b64")
+			return
+		}
+
+		decision := authorizationService.Authorize(r.Context(), auth.AuthorizationRequest{
+			Claims:     claims,
+			BucketName: req.BucketName,
+			Action:     auth.ActionWrite,
+			ObjectKey:  req.ObjectKey,
+		})
+		if !decision.Allowed {
+			httpapi.WriteError(w, r, http.StatusForbidden, "forbidden", "operation not permitted for this scope", httpapi.AuthDetails{Reason: decision.Reason})
+			return
+		}
+
+		if uploadService == nil {
+			writeUploadNotImplemented(w, r)
+			return
+		}
+
+		body, err := base64.StdEncoding.DecodeString(req.ContentB64)
+		if err != nil {
+			httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", "content_b64 must be valid base64", httpapi.ValidationDetails{Field: "content_b64", Reason: "invalid_base64"})
+			return
+		}
+
+		result, err := uploadService.UploadObject(r.Context(), service.ObjectUploadInput{
+			ProjectID:   claims.ProjectID,
+			AppID:       claims.AppID,
+			BucketName:  req.BucketName,
+			ObjectKey:   req.ObjectKey,
+			ContentType: req.ContentType,
+			Body:        body,
+			Metadata:    req.Metadata,
+		})
+		if err != nil {
+			switch {
+			case errors.Is(err, service.ErrInvalidObjectUploadInput), errors.Is(err, s3.ErrUnsupportedContentType), errors.Is(err, s3.ErrObjectTooLarge), errors.Is(err, s3.ErrInvalidAssumeRoleInput):
+				httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", err.Error(), httpapi.ValidationDetails{Field: "upload", Reason: "invalid_input"})
+				return
+			case errors.Is(err, service.ErrBucketConnectionNotFound):
+				httpapi.WriteError(w, r, http.StatusNotFound, "not_found", "bucket connection not found for scope", httpapi.NotFoundDetails{Resource: "bucket_connection", ID: req.BucketName})
+				return
+			default:
+				httpapi.WriteError(w, r, http.StatusBadGateway, "upstream_failure", "failed to upload object to storage provider", nil)
+				return
+			}
+		}
+
+		httpapi.WriteCreated(w, r, objectUploadResponse{
+			Uploaded:  true,
+			Bucket:    req.BucketName,
+			ObjectKey: req.ObjectKey,
+			ETag:      result.ETag,
+			Size:      result.Size,
+		})
+	}
 }
 
 func DeleteObjectHandler(authorizationService AuthorizationService) http.HandlerFunc {

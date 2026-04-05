@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/joho/godotenv"
 
+	"s3-service/internal/adapters"
 	"s3-service/internal/auth"
 	"s3-service/internal/config"
 	"s3-service/internal/database"
@@ -83,6 +84,8 @@ func main() {
 		ownershipRepo,
 		service.WithBucketConnectionSecurityValidator(bucketBaselineChecker),
 	)
+	uploadHelper := s3.NewUploadHelper(assumeRoleCache)
+	objectUploadService := service.NewObjectUploadService(ownershipRepo, adapters.NewS3ObjectUploaderAdapter(uploadHelper))
 	authorizationService := service.NewAuthorizationService(ownershipRepo)
 	auditService := service.NewAuditService(auditRepo)
 
@@ -91,6 +94,7 @@ func main() {
 		httpmiddleware.JWTAuthMiddleware(logger, verifier),
 		bucketService,
 		authorizationService,
+		objectUploadService,
 		auditService,
 	)
 	server := &http.Server{

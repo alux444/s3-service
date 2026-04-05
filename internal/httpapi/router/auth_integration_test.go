@@ -66,6 +66,7 @@ func TestAuthIntegration_InvalidToken(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/auth-check", nil)
@@ -93,6 +94,7 @@ func TestAuthIntegration_WrongAudience(t *testing.T) {
 	r := router.NewRouter(
 		testLogger(),
 		httpmiddleware.JWTAuthMiddleware(testLogger(), verifier),
+		nil,
 		nil,
 		nil,
 		nil,
@@ -138,6 +140,7 @@ func TestAuthIntegration_ForbiddenPrefixScope(t *testing.T) {
 		nil,
 		authzSvc,
 		nil,
+		nil,
 	)
 
 	token := signedToken(t, privateKey, map[string]any{
@@ -151,7 +154,7 @@ func TestAuthIntegration_ForbiddenPrefixScope(t *testing.T) {
 		"exp":            time.Now().Add(5 * time.Minute).Unix(),
 	})
 
-	body := `{"bucket_name":"bucket-a","object_key":"uploads/public/a.jpg"}`
+	body := `{"bucket_name":"bucket-a","object_key":"uploads/public/a.jpg","content_type":"image/jpeg","content_b64":"cGF5bG9hZA=="}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/objects/upload", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -181,6 +184,7 @@ func TestAuthIntegration_AppScopeDenial(t *testing.T) {
 		nil,
 		authzSvc,
 		nil,
+		nil,
 	)
 
 	token := signedToken(t, privateKey, map[string]any{
@@ -194,7 +198,7 @@ func TestAuthIntegration_AppScopeDenial(t *testing.T) {
 		"exp":            time.Now().Add(5 * time.Minute).Unix(),
 	})
 
-	body := `{"bucket_name":"bucket-a","object_key":"uploads/private/a.jpg"}`
+	body := `{"bucket_name":"bucket-a","object_key":"uploads/private/a.jpg","content_type":"image/jpeg","content_b64":"cGF5bG9hZA=="}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/objects/upload", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()

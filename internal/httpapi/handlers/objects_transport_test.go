@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"s3-service/internal/auth"
 	httpmiddleware "s3-service/internal/httpapi/middleware"
+	"s3-service/internal/service"
 )
 
 type stubObjectAuthorizationService struct {
@@ -22,14 +24,28 @@ func (s *stubObjectAuthorizationService) Authorize(_ context.Context, request au
 	return s.decision
 }
 
+type stubObjectUploadService struct {
+	result service.ObjectUploadResult
+	err    error
+	input  service.ObjectUploadInput
+}
+
+func (s *stubObjectUploadService) UploadObject(_ context.Context, input service.ObjectUploadInput) (service.ObjectUploadResult, error) {
+	s.input = input
+	if s.err != nil {
+		return service.ObjectUploadResult{}, s.err
+	}
+	return s.result, nil
+}
+
 func TestUploadObjectHandler(t *testing.T) {
 	claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleProjectClient, PrincipalType: auth.PrincipalTypeUser}
 
 	t.Run("returns forbidden when authorization denies", func(t *testing.T) {
 		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: false, Reason: auth.DecisionReasonPrefixScope}}
-		h := UploadObjectHandler(authz)
+		h := UploadObjectHandler(authz, nil)
 
-		req := httptest.NewRequest(http.MethodPost, "/v1/objects/upload", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg"}`))
+		req := httptest.NewRequest(http.MethodPost, "/v1/objects/upload", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg","content_type":"image/jpeg","content_b64":"cGF5bG9hZA=="}`))
 		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
 		rec := httptest.NewRecorder()
 
@@ -43,11 +59,11 @@ func TestUploadObjectHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("returns not implemented when authorization allows", func(t *testing.T) {
+	t.Run("returns not implemented when upload service is not configured", func(t *testing.T) {
 		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
-		h := UploadObjectHandler(authz)
+		h := UploadObjectHandler(authz, nil)
 
-		req := httptest.NewRequest(http.MethodPost, "/v1/objects/upload", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg"}`))
+		req := httptest.NewRequest(http.MethodPost, "/v1/objects/upload", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg","content_type":"image/jpeg","content_b64":"cGF5bG9hZA=="}`))
 		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
 		rec := httptest.NewRecorder()
 
@@ -62,6 +78,73 @@ func TestUploadObjectHandler(t *testing.T) {
 		}
 		if got.Error == nil || got.Error.Code != "not_implemented" {
 			t.Fatalf("expected not_implemented error, got %+v", got.Error)
+		}
+	})
+
+	t.Run("returns created when upload succeeds", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+		uploadSvc := &stubObjectUploadService{result: service.ObjectUploadResult{ETag: "etag-1", Size: 7}}
+		h := UploadObjectHandler(authz, uploadSvc)
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/objects/upload", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg","content_type":"image/jpeg","content_b64":"cGF5bG9hZA=="}`))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected status 201, got %d", rec.Code)
+		}
+		if uploadSvc.input.ProjectID != "project-1" || uploadSvc.input.AppID != "app-1" {
+			t.Fatalf("unexpected upload scope: project=%s app=%s", uploadSvc.input.ProjectID, uploadSvc.input.AppID)
+		}
+		if uploadSvc.input.ContentType != "image/jpeg" || string(uploadSvc.input.Body) != "payload" {
+			t.Fatalf("unexpected upload input: %+v", uploadSvc.input)
+		}
+	})
+
+	t.Run("returns bad request when base64 payload is invalid", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+		h := UploadObjectHandler(authz, &stubObjectUploadService{})
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/objects/upload", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg","content_type":"image/jpeg","content_b64":"%%%"}`))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", rec.Code)
+		}
+	})
+
+	t.Run("returns not found when bucket connection is missing", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+		h := UploadObjectHandler(authz, &stubObjectUploadService{err: service.ErrBucketConnectionNotFound})
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/objects/upload", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg","content_type":"image/jpeg","content_b64":"cGF5bG9hZA=="}`))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected status 404, got %d", rec.Code)
+		}
+	})
+
+	t.Run("returns upstream failure for unexpected upload errors", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+		h := UploadObjectHandler(authz, &stubObjectUploadService{err: errors.New("s3 timeout")})
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/objects/upload", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg","content_type":"image/jpeg","content_b64":"cGF5bG9hZA=="}`))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadGateway {
+			t.Fatalf("expected status 502, got %d", rec.Code)
 		}
 	})
 }
