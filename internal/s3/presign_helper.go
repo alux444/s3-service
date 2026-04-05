@@ -4,10 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 var ErrPresignNotImplemented = errors.New("s3 presign helper not implemented")
+var ErrUnsupportedPresignMethod = errors.New("unsupported presign method")
 
 type PresignObjectInput struct {
 	BucketName  string
@@ -46,15 +51,87 @@ func (h *PresignHelper) PresignObject(ctx context.Context, input PresignObjectIn
 	if input.BucketName == "" || input.ObjectKey == "" || input.Region == "" || input.RoleARN == "" {
 		return PresignObjectResult{}, fmt.Errorf("%w: bucket_name, object_key, region, and role_arn are required", ErrInvalidAssumeRoleInput)
 	}
-	if input.Method == "" {
+	if h == nil || h.cache == nil {
+		return PresignObjectResult{}, errors.New("presign helper is not configured")
+	}
+	method := strings.ToUpper(strings.TrimSpace(input.Method))
+	if method == "" {
 		return PresignObjectResult{}, fmt.Errorf("%w: method is required", ErrInvalidAssumeRoleInput)
 	}
+	if method != "GET" && method != "PUT" {
+		return PresignObjectResult{}, fmt.Errorf("%w: %s", ErrUnsupportedPresignMethod, method)
+	}
 
-	// WISHFUL THINKING (3.6):
-	// 1) Resolve assumed-role config from h.cache.ConfigForRole(...)
-	// 2) Build S3 presign client from role-scoped config
-	// 3) Normalize and validate expiration window (short-lived)
-	// 4) Branch by method: PresignGetObject / PresignPutObject
-	// 5) Return URL + method + final expiration
+	if method == "GET" {
+		cfg, err := h.cache.ConfigForRole(ctx, BucketRoleReference{
+			Region:     input.Region,
+			RoleARN:    input.RoleARN,
+			ExternalID: input.ExternalID,
+		})
+		if err != nil {
+			return PresignObjectResult{}, fmt.Errorf("resolve role config for presign: %w", err)
+		}
+
+		presigner := awss3.NewPresignClient(awss3.NewFromConfig(cfg))
+		request, err := presigner.PresignGetObject(ctx, &awss3.GetObjectInput{
+			Bucket: aws.String(input.BucketName),
+			Key:    aws.String(input.ObjectKey),
+		}, func(options *awss3.PresignOptions) {
+			if input.ExpiresIn > 0 {
+				options.Expires = input.ExpiresIn
+			}
+		})
+		if err != nil {
+			return PresignObjectResult{}, fmt.Errorf("presign get object: %w", err)
+		}
+
+		result := PresignObjectResult{
+			URL:    request.URL,
+			Method: method,
+		}
+		if input.ExpiresIn > 0 {
+			result.ExpiresIn = input.ExpiresIn
+		}
+		return result, nil
+	}
+
+	if method == "PUT" {
+		cfg, err := h.cache.ConfigForRole(ctx, BucketRoleReference{
+			Region:     input.Region,
+			RoleARN:    input.RoleARN,
+			ExternalID: input.ExternalID,
+		})
+		if err != nil {
+			return PresignObjectResult{}, fmt.Errorf("resolve role config for presign: %w", err)
+		}
+
+		presigner := awss3.NewPresignClient(awss3.NewFromConfig(cfg))
+		putInput := &awss3.PutObjectInput{
+			Bucket: aws.String(input.BucketName),
+			Key:    aws.String(input.ObjectKey),
+		}
+		if input.ContentType != "" {
+			putInput.ContentType = aws.String(input.ContentType)
+		}
+
+		request, err := presigner.PresignPutObject(ctx, putInput, func(options *awss3.PresignOptions) {
+			if input.ExpiresIn > 0 {
+				options.Expires = input.ExpiresIn
+			}
+		})
+		if err != nil {
+			return PresignObjectResult{}, fmt.Errorf("presign put object: %w", err)
+		}
+
+		result := PresignObjectResult{
+			URL:    request.URL,
+			Method: method,
+		}
+		if input.ExpiresIn > 0 {
+			result.ExpiresIn = input.ExpiresIn
+		}
+		return result, nil
+	}
+
 	return PresignObjectResult{}, ErrPresignNotImplemented
 }
