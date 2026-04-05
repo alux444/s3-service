@@ -38,6 +38,20 @@ func (s *stubObjectUploadService) UploadObject(_ context.Context, input service.
 	return s.result, nil
 }
 
+type stubObjectDeleteService struct {
+	result service.ObjectDeleteResult
+	err    error
+	input  service.ObjectDeleteInput
+}
+
+func (s *stubObjectDeleteService) DeleteObject(_ context.Context, input service.ObjectDeleteInput) (service.ObjectDeleteResult, error) {
+	s.input = input
+	if s.err != nil {
+		return service.ObjectDeleteResult{}, s.err
+	}
+	return s.result, nil
+}
+
 func TestUploadObjectHandler(t *testing.T) {
 	claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleProjectClient, PrincipalType: auth.PrincipalTypeUser}
 
@@ -168,6 +182,74 @@ func TestPresignDownloadObjectHandler_UsesReadAction(t *testing.T) {
 	}
 }
 
+func TestDeleteObjectHandler(t *testing.T) {
+	claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleProjectClient, PrincipalType: auth.PrincipalTypeUser}
+
+	t.Run("returns forbidden when authorization denies", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: false, Reason: auth.DecisionReasonPrefixScope}}
+		h := DeleteObjectHandler(authz, nil)
+
+		req := httptest.NewRequest(http.MethodDelete, "/v1/objects", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg"}`))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected status 403, got %d", rec.Code)
+		}
+	})
+
+	t.Run("returns not implemented when delete service is not configured", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+		h := DeleteObjectHandler(authz, nil)
+
+		req := httptest.NewRequest(http.MethodDelete, "/v1/objects", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg"}`))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotImplemented {
+			t.Fatalf("expected status 501, got %d", rec.Code)
+		}
+	})
+
+	t.Run("returns ok when delete succeeds", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+		deleteSvc := &stubObjectDeleteService{result: service.ObjectDeleteResult{Deleted: true}}
+		h := DeleteObjectHandler(authz, deleteSvc)
+
+		req := httptest.NewRequest(http.MethodDelete, "/v1/objects", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg"}`))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", rec.Code)
+		}
+		if deleteSvc.input.ProjectID != "project-1" || deleteSvc.input.AppID != "app-1" {
+			t.Fatalf("unexpected delete scope: project=%s app=%s", deleteSvc.input.ProjectID, deleteSvc.input.AppID)
+		}
+	})
+
+	t.Run("returns not found when bucket connection is missing", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+		h := DeleteObjectHandler(authz, &stubObjectDeleteService{err: service.ErrBucketConnectionNotFound})
+
+		req := httptest.NewRequest(http.MethodDelete, "/v1/objects", strings.NewReader(`{"bucket_name":"bucket-a","object_key":"uploads/a.jpg"}`))
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected status 404, got %d", rec.Code)
+		}
+	})
+}
+
 func TestObjectHandlers_ReturnNotImplementedWhenAuthorized(t *testing.T) {
 	claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleProjectClient, PrincipalType: auth.PrincipalTypeUser}
 
@@ -178,7 +260,6 @@ func TestObjectHandlers_ReturnNotImplementedWhenAuthorized(t *testing.T) {
 		handlerFn  func(AuthorizationService) http.HandlerFunc
 		wantAction auth.Action
 	}{
-		{name: "delete", method: http.MethodDelete, path: "/v1/objects", handlerFn: DeleteObjectHandler, wantAction: auth.ActionDelete},
 		{name: "presign upload", method: http.MethodPost, path: "/v1/objects/presign-upload", handlerFn: PresignUploadObjectHandler, wantAction: auth.ActionWrite},
 		{name: "presign download", method: http.MethodPost, path: "/v1/objects/presign-download", handlerFn: PresignDownloadObjectHandler, wantAction: auth.ActionRead},
 	}

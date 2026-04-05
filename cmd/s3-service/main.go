@@ -85,7 +85,9 @@ func main() {
 		service.WithBucketConnectionSecurityValidator(bucketBaselineChecker),
 	)
 	uploadHelper := s3.NewUploadHelper(assumeRoleCache)
+	deleteHelper := s3.NewDeleteHelper(assumeRoleCache)
 	objectUploadService := service.NewObjectUploadService(ownershipRepo, adapters.NewS3ObjectUploaderAdapter(uploadHelper))
+	objectDeleteService := service.NewObjectDeleteService(ownershipRepo, adapters.NewS3ObjectDeleterAdapter(deleteHelper))
 	authorizationService := service.NewAuthorizationService(ownershipRepo)
 	auditService := service.NewAuditService(auditRepo)
 
@@ -95,6 +97,7 @@ func main() {
 		bucketService,
 		authorizationService,
 		objectUploadService,
+		objectDeleteService,
 		auditService,
 	)
 	server := &http.Server{
