@@ -45,9 +45,16 @@ type bucketSecurityClientFactory func(cfg aws.Config) bucketSecurityClient
 type BucketSecurityBaselineChecker struct {
 	sessions      roleConfigProvider
 	clientFactory bucketSecurityClientFactory
+	retryPolicy   retryPolicy
 }
 
 type BucketSecurityBaselineCheckerOption func(*BucketSecurityBaselineChecker)
+
+func WithBucketBaselineRetryPolicy(policy retryPolicy) BucketSecurityBaselineCheckerOption {
+	return func(c *BucketSecurityBaselineChecker) {
+		c.retryPolicy = policy
+	}
+}
 
 func WithBucketSecurityClientFactory(factory bucketSecurityClientFactory) BucketSecurityBaselineCheckerOption {
 	return func(c *BucketSecurityBaselineChecker) {
@@ -59,7 +66,8 @@ func WithBucketSecurityClientFactory(factory bucketSecurityClientFactory) Bucket
 
 func NewBucketSecurityBaselineChecker(sessions roleConfigProvider, opts ...BucketSecurityBaselineCheckerOption) *BucketSecurityBaselineChecker {
 	checker := &BucketSecurityBaselineChecker{
-		sessions: sessions,
+		sessions:    sessions,
+		retryPolicy: defaultRetryPolicy(),
 		clientFactory: func(cfg aws.Config) bucketSecurityClient {
 			return awss3.NewFromConfig(cfg)
 		},
@@ -85,7 +93,9 @@ func (c *BucketSecurityBaselineChecker) ValidateBucketConnection(ctx context.Con
 	client := c.clientFactory(cfg)
 	var reasons []string
 
-	publicAccessBlock, err := client.GetPublicAccessBlock(ctx, &awss3.GetPublicAccessBlockInput{Bucket: aws.String(bucketName)})
+	publicAccessBlock, err := retryAWS(ctx, c.retryPolicy, func() (*awss3.GetPublicAccessBlockOutput, error) {
+		return client.GetPublicAccessBlock(ctx, &awss3.GetPublicAccessBlockInput{Bucket: aws.String(bucketName)})
+	})
 	if err != nil {
 		if apiErrorCode(err) == "NoSuchPublicAccessBlockConfiguration" {
 			reasons = append(reasons, "bucket public access block configuration is missing")
@@ -96,7 +106,9 @@ func (c *BucketSecurityBaselineChecker) ValidateBucketConnection(ctx context.Con
 		reasons = append(reasons, "bucket must enable all public access block settings")
 	}
 
-	policyStatus, err := client.GetBucketPolicyStatus(ctx, &awss3.GetBucketPolicyStatusInput{Bucket: aws.String(bucketName)})
+	policyStatus, err := retryAWS(ctx, c.retryPolicy, func() (*awss3.GetBucketPolicyStatusOutput, error) {
+		return client.GetBucketPolicyStatus(ctx, &awss3.GetBucketPolicyStatusInput{Bucket: aws.String(bucketName)})
+	})
 	if err != nil {
 		// No bucket policy is acceptable for a private baseline.
 		if apiErrorCode(err) != "NoSuchBucketPolicy" {
@@ -106,7 +118,9 @@ func (c *BucketSecurityBaselineChecker) ValidateBucketConnection(ctx context.Con
 		reasons = append(reasons, "bucket policy allows public access")
 	}
 
-	ownership, err := client.GetBucketOwnershipControls(ctx, &awss3.GetBucketOwnershipControlsInput{Bucket: aws.String(bucketName)})
+	ownership, err := retryAWS(ctx, c.retryPolicy, func() (*awss3.GetBucketOwnershipControlsOutput, error) {
+		return client.GetBucketOwnershipControls(ctx, &awss3.GetBucketOwnershipControlsInput{Bucket: aws.String(bucketName)})
+	})
 	if err != nil {
 		if apiErrorCode(err) == "OwnershipControlsNotFoundError" {
 			reasons = append(reasons, "bucket ownership controls are not configured")

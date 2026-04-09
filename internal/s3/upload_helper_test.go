@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
@@ -28,11 +29,21 @@ func (s *stubUploadRoleConfigProvider) ConfigForRole(_ context.Context, ref Buck
 type stubUploadClient struct {
 	out   *awss3.PutObjectOutput
 	err   error
+	errs  []error
 	input *awss3.PutObjectInput
+	calls int
 }
 
 func (s *stubUploadClient) PutObject(_ context.Context, params *awss3.PutObjectInput, _ ...func(*awss3.Options)) (*awss3.PutObjectOutput, error) {
+	s.calls++
 	s.input = params
+	if len(s.errs) > 0 {
+		err := s.errs[0]
+		s.errs = s.errs[1:]
+		if err != nil {
+			return nil, err
+		}
+	}
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -154,6 +165,7 @@ func TestUploadHelper_UploadObject(t *testing.T) {
 			cache:               &stubUploadRoleConfigProvider{cfg: aws.Config{}},
 			allowedContentTypes: map[string]struct{}{"image/png": {}},
 			maxUploadBytes:      1024,
+			retryPolicy:         retryPolicy{maxAttempts: 2, sleep: func(context.Context, time.Duration) error { return nil }},
 			clientFactory: func(aws.Config) uploadClient {
 				return &stubUploadClient{err: errors.New("s3 unavailable")}
 			},
@@ -172,6 +184,44 @@ func TestUploadHelper_UploadObject(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "put object") {
 			t.Fatalf("expected put object wrapped error, got %v", err)
+		}
+	})
+
+	t.Run("retries on throttling before success", func(t *testing.T) {
+		client := &stubUploadClient{
+			errs: []error{
+				testRetryAPIError{code: "ThrottlingException", msg: "slow down"},
+				nil,
+			},
+			out: &awss3.PutObjectOutput{ETag: aws.String("\"etag-2\"")},
+		}
+
+		helper := &UploadHelper{
+			cache:               &stubUploadRoleConfigProvider{cfg: aws.Config{}},
+			allowedContentTypes: map[string]struct{}{"image/png": {}},
+			maxUploadBytes:      1024,
+			retryPolicy:         retryPolicy{maxAttempts: 3, sleep: func(context.Context, time.Duration) error { return nil }},
+			clientFactory: func(aws.Config) uploadClient {
+				return client
+			},
+		}
+
+		result, err := helper.UploadObject(context.Background(), UploadObjectInput{
+			BucketName:  "bucket-a",
+			ObjectKey:   "uploads/a.png",
+			Region:      "us-east-1",
+			RoleARN:     "arn:aws:iam::123456789012:role/s3",
+			ContentType: "image/png",
+			Body:        []byte("payload"),
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if result.ETag != "\"etag-2\"" {
+			t.Fatalf("unexpected result: %+v", result)
+		}
+		if client.calls != 2 {
+			t.Fatalf("expected 2 put attempts, got %d", client.calls)
 		}
 	})
 }

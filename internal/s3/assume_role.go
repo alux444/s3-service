@@ -28,6 +28,7 @@ type providerFactory func(BucketRoleReference, time.Duration) (aws.CredentialsPr
 type AssumeRoleSessionCache struct {
 	baseConfig      aws.Config
 	sessionDuration time.Duration
+	retryPolicy     retryPolicy
 
 	mu       sync.RWMutex
 	sessions map[string]aws.Config
@@ -36,6 +37,12 @@ type AssumeRoleSessionCache struct {
 }
 
 type AssumeRoleSessionCacheOption func(*AssumeRoleSessionCache)
+
+func WithAssumeRoleRetryPolicy(policy retryPolicy) AssumeRoleSessionCacheOption {
+	return func(c *AssumeRoleSessionCache) {
+		c.retryPolicy = policy
+	}
+}
 
 func WithSessionDuration(duration time.Duration) AssumeRoleSessionCacheOption {
 	return func(c *AssumeRoleSessionCache) {
@@ -66,6 +73,7 @@ func NewAssumeRoleSessionCache(ctx context.Context, baseConfig aws.Config, opts 
 	cache := &AssumeRoleSessionCache{
 		baseConfig:      cfg,
 		sessionDuration: defaultSessionDuration,
+		retryPolicy:     defaultRetryPolicy(),
 		sessions:        make(map[string]aws.Config),
 	}
 	cache.providerFactory = cache.defaultProviderFactory
@@ -104,7 +112,10 @@ func (c *AssumeRoleSessionCache) ConfigForRole(ctx context.Context, ref BucketRo
 	cfg.Credentials = aws.NewCredentialsCache(provider)
 
 	// Prime once so invalid trust policy/external ID fails early.
-	if _, err := cfg.Credentials.Retrieve(ctx); err != nil {
+	_, err = retryAWS(ctx, c.retryPolicy, func() (aws.Credentials, error) {
+		return cfg.Credentials.Retrieve(ctx)
+	})
+	if err != nil {
 		return aws.Config{}, fmt.Errorf("assume role for %s: %w", ref.RoleARN, err)
 	}
 

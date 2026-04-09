@@ -55,6 +55,12 @@ type uploadClientFactory func(cfg aws.Config) uploadClient
 
 type UploadHelperOption func(*UploadHelper)
 
+func WithUploadRetryPolicy(policy retryPolicy) UploadHelperOption {
+	return func(h *UploadHelper) {
+		h.retryPolicy = policy
+	}
+}
+
 func WithAllowedContentTypes(contentTypes []string) UploadHelperOption {
 	return func(h *UploadHelper) {
 		if len(contentTypes) == 0 {
@@ -93,6 +99,7 @@ type UploadHelper struct {
 	allowedContentTypes map[string]struct{}
 	maxUploadBytes      int64
 	clientFactory       uploadClientFactory
+	retryPolicy         retryPolicy
 }
 
 func NewUploadHelper(cache *AssumeRoleSessionCache, opts ...UploadHelperOption) *UploadHelper {
@@ -100,6 +107,7 @@ func NewUploadHelper(cache *AssumeRoleSessionCache, opts ...UploadHelperOption) 
 		cache:               cache,
 		maxUploadBytes:      defaultMaxUploadBytes,
 		allowedContentTypes: make(map[string]struct{}, len(defaultAllowedContentTypes)),
+		retryPolicy:         defaultRetryPolicy(),
 		clientFactory: func(cfg aws.Config) uploadClient {
 			return awss3.NewFromConfig(cfg)
 		},
@@ -146,12 +154,14 @@ func (h *UploadHelper) UploadObject(ctx context.Context, input UploadObjectInput
 	}
 
 	client := h.clientFactory(cfg)
-	output, err := client.PutObject(ctx, &awss3.PutObjectInput{
-		Bucket:      aws.String(input.BucketName),
-		Key:         aws.String(input.ObjectKey),
-		Body:        bytes.NewReader(input.Body),
-		ContentType: aws.String(normalizedType),
-		Metadata:    input.Metadata,
+	output, err := retryAWS(ctx, h.retryPolicy, func() (*awss3.PutObjectOutput, error) {
+		return client.PutObject(ctx, &awss3.PutObjectInput{
+			Bucket:      aws.String(input.BucketName),
+			Key:         aws.String(input.ObjectKey),
+			Body:        bytes.NewReader(input.Body),
+			ContentType: aws.String(normalizedType),
+			Metadata:    input.Metadata,
+		})
 	})
 	if err != nil {
 		return UploadObjectResult{}, fmt.Errorf("put object: %w", err)

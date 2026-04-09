@@ -22,6 +22,23 @@ func (p staticProvider) Retrieve(context.Context) (aws.Credentials, error) {
 	return p.value, nil
 }
 
+type flakyProvider struct {
+	failuresLeft int
+	value        aws.Credentials
+	calls        *int
+}
+
+func (p *flakyProvider) Retrieve(context.Context) (aws.Credentials, error) {
+	if p.calls != nil {
+		(*p.calls)++
+	}
+	if p.failuresLeft > 0 {
+		p.failuresLeft--
+		return aws.Credentials{}, testRetryAPIError{code: "Throttling", msg: "try later"}
+	}
+	return p.value, nil
+}
+
 func TestAssumeRoleSessionCache_ConfigForRoleCachesByRoleKey(t *testing.T) {
 	var createCalls int
 	cache, err := NewAssumeRoleSessionCache(
@@ -146,5 +163,32 @@ func TestAssumeRoleSessionCache_ConfigForRoleReturnsProviderError(t *testing.T) 
 	}
 	if !strings.Contains(err.Error(), "assume role denied") {
 		t.Fatalf("expected wrapped provider error, got %v", err)
+	}
+}
+
+func TestAssumeRoleSessionCache_ConfigForRoleRetriesTransientErrors(t *testing.T) {
+	provider := &flakyProvider{
+		failuresLeft: 1,
+		value:        aws.Credentials{AccessKeyID: "AKIA_TEST", SecretAccessKey: "SECRET", SessionToken: "TOKEN"},
+	}
+
+	cache, err := NewAssumeRoleSessionCache(
+		context.Background(),
+		aws.Config{},
+		WithProviderFactory(func(_ BucketRoleReference, _ time.Duration) (aws.CredentialsProvider, error) {
+			return provider, nil
+		}),
+		WithAssumeRoleRetryPolicy(retryPolicy{maxAttempts: 3, sleep: func(context.Context, time.Duration) error { return nil }}),
+	)
+	if err != nil {
+		t.Fatalf("NewAssumeRoleSessionCache() error = %v", err)
+	}
+
+	_, err = cache.ConfigForRole(context.Background(), BucketRoleReference{Region: "us-east-1", RoleARN: "arn:aws:iam::123456789012:role/test"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if provider.failuresLeft != 0 {
+		t.Fatalf("expected failures consumed, got %d", provider.failuresLeft)
 	}
 }

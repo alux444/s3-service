@@ -57,7 +57,7 @@ Standalone service used by Locket (and future projects) to securely access multi
 - [x] **3.4** Upload helper with content type validation, max size checks, metadata support `Go` `S3` · 2 pts
 - [x] **3.5** Delete helper with prefix guardrails and soft-fail idempotency `Go` `S3` · 2 pts
 - [x] **3.6** Presign helper for GET and PUT with short expirations `Go` `S3` · 2 pts
-- [ ] **3.7** Retry strategy for throttling and transient AWS errors `Go` `S3` · 2 pts
+- [x] **3.7** Retry strategy for throttling and transient AWS errors `Go` `S3` · 2 pts
 - [ ] **3.8** Integration tests against real AWS test bucket path or localstack fallback `Go` `S3` · 1 pt
 
 ---
@@ -76,6 +76,7 @@ Standalone service used by Locket (and future projects) to securely access multi
 - [ ] **4.8** POST /v1/objects/presign-download (optional/admin-only short-lived read links) `Go` `API` · 1 pt
 - [ ] **4.9** Unified error codes (auth_failed, forbidden, not_found, throttle, upstream_failure) `Go` `API` · 1 pt
 - [ ] **4.10** API docs (OpenAPI + examples for Locket integration) `Infra` `Docs` · 2 pts
+- [ ] **4.11** Full E2E test matrix for every API endpoint in this plan (including POST/DELETE create-remove flow where applicable) `Go` `API` `Test` · 2 pts
 
 ---
 

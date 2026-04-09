@@ -38,6 +38,12 @@ type deleteClientFactory func(cfg aws.Config) deleteClient
 
 type DeleteHelperOption func(*DeleteHelper)
 
+func WithDeleteRetryPolicy(policy retryPolicy) DeleteHelperOption {
+	return func(h *DeleteHelper) {
+		h.retryPolicy = policy
+	}
+}
+
 func WithDeleteClientFactory(factory deleteClientFactory) DeleteHelperOption {
 	return func(h *DeleteHelper) {
 		if factory != nil {
@@ -49,11 +55,13 @@ func WithDeleteClientFactory(factory deleteClientFactory) DeleteHelperOption {
 type DeleteHelper struct {
 	cache         deleteRoleConfigProvider
 	clientFactory deleteClientFactory
+	retryPolicy   retryPolicy
 }
 
 func NewDeleteHelper(cache *AssumeRoleSessionCache, opts ...DeleteHelperOption) *DeleteHelper {
 	helper := &DeleteHelper{
-		cache: cache,
+		cache:       cache,
+		retryPolicy: defaultRetryPolicy(),
 		clientFactory: func(cfg aws.Config) deleteClient {
 			return awss3.NewFromConfig(cfg)
 		},
@@ -86,9 +94,11 @@ func (h *DeleteHelper) DeleteObject(ctx context.Context, input DeleteObjectInput
 	}
 
 	client := h.clientFactory(cfg)
-	_, err = client.DeleteObject(ctx, &awss3.DeleteObjectInput{
-		Bucket: aws.String(input.BucketName),
-		Key:    aws.String(input.ObjectKey),
+	_, err = retryAWS(ctx, h.retryPolicy, func() (*awss3.DeleteObjectOutput, error) {
+		return client.DeleteObject(ctx, &awss3.DeleteObjectInput{
+			Bucket: aws.String(input.BucketName),
+			Key:    aws.String(input.ObjectKey),
+		})
 	})
 	if err != nil {
 		if isNoSuchKeyLike(err) {

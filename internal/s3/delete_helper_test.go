@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
@@ -27,11 +28,21 @@ func (s *stubDeleteRoleConfigProvider) ConfigForRole(_ context.Context, ref Buck
 
 type stubDeleteClient struct {
 	err   error
+	errs  []error
 	input *awss3.DeleteObjectInput
+	calls int
 }
 
 func (s *stubDeleteClient) DeleteObject(_ context.Context, params *awss3.DeleteObjectInput, _ ...func(*awss3.Options)) (*awss3.DeleteObjectOutput, error) {
+	s.calls++
 	s.input = params
+	if len(s.errs) > 0 {
+		err := s.errs[0]
+		s.errs = s.errs[1:]
+		if err != nil {
+			return nil, err
+		}
+	}
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -143,7 +154,8 @@ func TestDeleteHelper_DeleteObject(t *testing.T) {
 
 	t.Run("returns upstream delete error", func(t *testing.T) {
 		helper := &DeleteHelper{
-			cache: &stubDeleteRoleConfigProvider{cfg: aws.Config{}},
+			cache:       &stubDeleteRoleConfigProvider{cfg: aws.Config{}},
+			retryPolicy: retryPolicy{maxAttempts: 2, sleep: func(context.Context, time.Duration) error { return nil }},
 			clientFactory: func(aws.Config) deleteClient {
 				return &stubDeleteClient{err: errors.New("s3 timeout")}
 			},
@@ -161,6 +173,34 @@ func TestDeleteHelper_DeleteObject(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "delete object") {
 			t.Fatalf("expected wrapped delete error, got %v", err)
+		}
+	})
+
+	t.Run("retries on transient throttling error", func(t *testing.T) {
+		client := &stubDeleteClient{errs: []error{testDeleteAPIError{code: "SlowDown", msg: "retry"}, nil}}
+		helper := &DeleteHelper{
+			cache:       &stubDeleteRoleConfigProvider{cfg: aws.Config{}},
+			retryPolicy: retryPolicy{maxAttempts: 3, sleep: func(context.Context, time.Duration) error { return nil }},
+			clientFactory: func(aws.Config) deleteClient {
+				return client
+			},
+		}
+
+		result, err := helper.DeleteObject(context.Background(), DeleteObjectInput{
+			BucketName:      "bucket-a",
+			ObjectKey:       "uploads/a.jpg",
+			Region:          "us-east-1",
+			RoleARN:         "arn:aws:iam::123456789012:role/s3",
+			AllowedPrefixes: []string{"uploads/"},
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !result.Deleted {
+			t.Fatal("expected deleted=true")
+		}
+		if client.calls != 2 {
+			t.Fatalf("expected 2 delete attempts, got %d", client.calls)
 		}
 	})
 }
