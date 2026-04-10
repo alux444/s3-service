@@ -1,6 +1,6 @@
 # S3 Storage Service — Build Plan
 
-Standalone service used by Locket (and future projects) to securely access multiple S3 buckets.
+Standalone service to securely access multiple S3 buckets.
 
 ---
 
@@ -64,7 +64,7 @@ Standalone service used by Locket (and future projects) to securely access multi
 
 ## Epic 4 — Storage API surface
 
-> Stable contract for Locket and future clients
+> Stable contract
 
 - [ ] **4.1** POST /v1/bucket-connections (create or register client bucket) `Go` `API` · 2 pts
 - [ ] **4.2** GET /v1/bucket-connections (list by authenticated project/client) `Go` `API` · 1 pt

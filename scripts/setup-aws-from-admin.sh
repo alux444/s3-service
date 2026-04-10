@@ -14,7 +14,6 @@ DROPLET_USER_NAME="${DROPLET_USER_NAME:-droplet-runtime}"
 APP_ASSUME_ROLE_NAME="${APP_ASSUME_ROLE_NAME:-${PROJECT_PREFIX}-bucket-access}"
 IT_ROLE_NAME="${IT_ROLE_NAME:-${PROJECT_PREFIX}-it-role}"
 IT_EXTERNAL_ID="${IT_EXTERNAL_ID:-${PROJECT_PREFIX}-it-external}"
-CREATE_DROPLET_ACCESS_KEY="${CREATE_DROPLET_ACCESS_KEY:-false}"
 VERIFY_ASSUME_ROLE_WITH_CALLER="${VERIFY_ASSUME_ROLE_WITH_CALLER:-false}"
 
 log() {
@@ -105,24 +104,7 @@ aws_cmd iam put-user-policy \
   --policy-name "${PROJECT_PREFIX}-droplet-bootstrap" \
   --policy-document "file://${TMP_DIR}/droplet-runtime-bootstrap-policy.json" >/dev/null
 
-if bool_is_true "${CREATE_DROPLET_ACCESS_KEY}"; then
-  key_count="$(aws_cmd iam list-access-keys --user-name "${DROPLET_USER_NAME}" --query 'length(AccessKeyMetadata)' --output text)"
-  if [[ "${key_count}" -ge 2 ]]; then
-    fail "User ${DROPLET_USER_NAME} already has 2 access keys. Remove one before creating another."
-  fi
-
-  if [[ "${key_count}" -eq 0 ]]; then
-    ACCESS_KEY_FILE="${LOG_DIR}/${DROPLET_USER_NAME}-access-key-$(date +%Y%m%d-%H%M%S).json"
-    log "WARN" "Creating access key for ${DROPLET_USER_NAME}; save it securely."
-    aws_cmd iam create-access-key --user-name "${DROPLET_USER_NAME}" > "${ACCESS_KEY_FILE}"
-    chmod 600 "${ACCESS_KEY_FILE}"
-    log "WARN" "Access key material written to ${ACCESS_KEY_FILE}"
-  else
-    log "INFO" "Skipping access key creation; user already has ${key_count} key(s)."
-  fi
-else
-  log "INFO" "CREATE_DROPLET_ACCESS_KEY is false; skipping access key creation."
-fi
+log "INFO" "Access key creation for ${DROPLET_USER_NAME} is manual by design."
 
 # 2) Create or ensure bucket baseline
 if resource_exists_bucket "${BUCKET_NAME}"; then
@@ -227,7 +209,7 @@ cat > "${TMP_DIR}/app-assume-role-policy.json" <<EOF
       "Sid": "BucketSecurityBaselineReads",
       "Effect": "Allow",
       "Action": [
-        "s3:GetPublicAccessBlock",
+        "s3:GetBucketPublicAccessBlock",
         "s3:GetBucketPolicyStatus",
         "s3:GetBucketOwnershipControls"
       ],
@@ -294,7 +276,7 @@ cat > "${TMP_DIR}/it-role-policy.json" <<EOF
       "Sid": "IntegrationBaselineReads",
       "Effect": "Allow",
       "Action": [
-        "s3:GetPublicAccessBlock",
+        "s3:GetBucketPublicAccessBlock",
         "s3:GetBucketPolicyStatus",
         "s3:GetBucketOwnershipControls"
       ],
