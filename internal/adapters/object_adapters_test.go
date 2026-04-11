@@ -3,6 +3,8 @@ package adapters
 import (
 	"context"
 	"errors"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,10 +46,24 @@ type stubPresignerHelper struct {
 	err    error
 }
 
+type stubReaderHelper struct {
+	input  s3.GetObjectInput
+	result s3.GetObjectResult
+	err    error
+}
+
 func (s *stubPresignerHelper) PresignObject(_ context.Context, input s3.PresignObjectInput) (s3.PresignObjectResult, error) {
 	s.input = input
 	if s.err != nil {
 		return s3.PresignObjectResult{}, s.err
+	}
+	return s.result, nil
+}
+
+func (s *stubReaderHelper) GetObject(_ context.Context, input s3.GetObjectInput) (s3.GetObjectResult, error) {
+	s.input = input
+	if s.err != nil {
+		return s3.GetObjectResult{}, s.err
 	}
 	return s.result, nil
 }
@@ -158,6 +174,49 @@ func TestS3ObjectPresignerAdapter_PresignObject(t *testing.T) {
 		adapter := &S3ObjectPresignerAdapter{helper: &stubPresignerHelper{err: expected}}
 
 		_, err := adapter.PresignObject(context.Background(), service.ObjectPresignInput{})
+		if !errors.Is(err, expected) {
+			t.Fatalf("expected wrapped error %v, got %v", expected, err)
+		}
+	})
+}
+
+func TestS3ObjectReaderAdapter_ReadObject(t *testing.T) {
+	t.Run("maps input output", func(t *testing.T) {
+		help := &stubReaderHelper{result: s3.GetObjectResult{Body: io.NopCloser(strings.NewReader("payload")), ContentType: "image/jpeg", ContentLength: 7, ETag: "etag-1"}}
+		adapter := &S3ObjectReaderAdapter{helper: help}
+		externalID := "ext-1"
+
+		result, err := adapter.ReadObject(context.Background(), service.ObjectReadInput{
+			BucketName:      "bucket-a",
+			ObjectKey:       "uploads/a.jpg",
+			Region:          "us-east-1",
+			RoleARN:         "arn:aws:iam::123:role/test",
+			ExternalID:      &externalID,
+			AllowedPrefixes: []string{"uploads/"},
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if help.input.BucketName != "bucket-a" || help.input.ObjectKey != "uploads/a.jpg" {
+			t.Fatalf("unexpected helper input: %+v", help.input)
+		}
+		if result.ContentType != "image/jpeg" || result.ContentLength != 7 || result.ETag != "etag-1" {
+			t.Fatalf("unexpected result metadata: %+v", result)
+		}
+		body, readErr := io.ReadAll(result.Body)
+		if readErr != nil {
+			t.Fatalf("failed to read body: %v", readErr)
+		}
+		if string(body) != "payload" {
+			t.Fatalf("unexpected body: %q", string(body))
+		}
+	})
+
+	t.Run("returns helper error", func(t *testing.T) {
+		expected := errors.New("read failed")
+		adapter := &S3ObjectReaderAdapter{helper: &stubReaderHelper{err: expected}}
+
+		_, err := adapter.ReadObject(context.Background(), service.ObjectReadInput{})
 		if !errors.Is(err, expected) {
 			t.Fatalf("expected wrapped error %v, got %v", expected, err)
 		}

@@ -12,7 +12,7 @@ import (
 	httpmiddleware "s3-service/internal/httpapi/middleware"
 )
 
-func NewRouter(logger *slog.Logger, authMW func(http.Handler) http.Handler, bucketService handlers.BucketConnectionService, authorizationService handlers.AuthorizationService, objectUploadService handlers.ObjectUploadService, objectDeleteService handlers.ObjectDeleteService, objectPresignService handlers.ObjectPresignService, auditRecorder httpmiddleware.AuditEventRecorder) http.Handler {
+func NewRouter(logger *slog.Logger, authMW func(http.Handler) http.Handler, bucketService handlers.BucketConnectionService, authorizationService handlers.AuthorizationService, objectUploadService handlers.ObjectUploadService, objectDeleteService handlers.ObjectDeleteService, objectPresignService handlers.ObjectPresignService, objectReadService handlers.ObjectReadService, auditRecorder httpmiddleware.AuditEventRecorder) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
@@ -40,7 +40,7 @@ func NewRouter(logger *slog.Logger, authMW func(http.Handler) http.Handler, buck
 	)
 
 	r.Get("/health", handlers.HealthHandler)
-	registerV1Routes(r, authMW, auditMW, rateLimitMW, bucketService, authorizationService, objectUploadService, objectDeleteService, objectPresignService)
+	registerV1Routes(r, authMW, auditMW, rateLimitMW, bucketService, authorizationService, objectUploadService, objectDeleteService, objectPresignService, objectReadService)
 
 	return r
 }

@@ -66,11 +66,11 @@ Standalone service to securely access multiple S3 buckets.
 
 > Stable contract
 
-- [ ] **4.1** POST /v1/bucket-connections (create or register client bucket) `Go` `API` · 2 pts
-- [ ] **4.2** GET /v1/bucket-connections (list by authenticated project/client) `Go` `API` · 1 pt
-- [ ] **4.3** POST /v1/objects/upload (server-side upload) `Go` `API` · 2 pts
-- [ ] **4.4** POST /v1/objects/presign-upload (browser direct upload) `Go` `API` · 2 pts
-- [ ] **4.5** GET /v1/images/:id (authenticated image stream via backend, enforce `app_id` + ownership policy) `Go` `API` · 2 pts
+- [x] **4.1** POST /v1/bucket-connections (create or register client bucket) `Go` `API` · 2 pts
+- [x] **4.2** GET /v1/bucket-connections (list by authenticated project/client) `Go` `API` · 1 pt
+- [x] **4.3** POST /v1/objects/upload (server-side upload) `Go` `API` · 2 pts
+- [x] **4.4** POST /v1/objects/presign-upload (browser direct upload) `Go` `API` · 2 pts
+- [x] **4.5** GET /v1/images/:id (authenticated image stream via backend, enforce `app_id` + ownership policy) `Go` `API` · 2 pts
 - [ ] **4.6** GET /v1/images (authenticated image list with metadata + backend URL) `Go` `API` · 1 pt
 - [ ] **4.7** DELETE /v1/images/:id (safe delete with ownership check and app delete scope) `Go` `API` · 1 pt
 - [ ] **4.8** POST /v1/objects/presign-download (optional/admin-only short-lived read links) `Go` `API` · 1 pt
