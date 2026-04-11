@@ -87,10 +87,12 @@ func main() {
 	uploadHelper := s3.NewUploadHelper(assumeRoleCache)
 	deleteHelper := s3.NewDeleteHelper(assumeRoleCache)
 	presignHelper := s3.NewPresignHelper(assumeRoleCache)
+	listHelper := s3.NewListHelper(assumeRoleCache)
 	getHelper := s3.NewGetHelper(assumeRoleCache)
 	objectUploadService := service.NewObjectUploadService(ownershipRepo, adapters.NewS3ObjectUploaderAdapter(uploadHelper))
 	objectDeleteService := service.NewObjectDeleteService(ownershipRepo, adapters.NewS3ObjectDeleterAdapter(deleteHelper))
 	objectPresignService := service.NewObjectPresignService(ownershipRepo, adapters.NewS3ObjectPresignerAdapter(presignHelper))
+	objectListService := service.NewObjectListService(ownershipRepo, ownershipRepo, adapters.NewS3ObjectListerAdapter(listHelper))
 	objectReadService := service.NewObjectReadService(ownershipRepo, adapters.NewS3ObjectReaderAdapter(getHelper))
 	authorizationService := service.NewAuthorizationService(ownershipRepo)
 	auditService := service.NewAuditService(auditRepo)
@@ -103,6 +105,7 @@ func main() {
 		objectUploadService,
 		objectDeleteService,
 		objectPresignService,
+		objectListService,
 		objectReadService,
 		auditService,
 	)

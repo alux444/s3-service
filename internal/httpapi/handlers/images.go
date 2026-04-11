@@ -6,8 +6,10 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -19,6 +21,94 @@ import (
 
 type ObjectReadService interface {
 	ReadObject(ctx context.Context, input service.ObjectReadInput) (service.ObjectReadResult, error)
+}
+
+type ObjectListService interface {
+	ListImages(ctx context.Context, input service.ObjectListInput) ([]service.ObjectListEntry, error)
+}
+
+type listImagesResponse struct {
+	Images []listImageItem `json:"images"`
+}
+
+type listImageItem struct {
+	ID           string `json:"id"`
+	BucketName   string `json:"bucket_name"`
+	ObjectKey    string `json:"object_key"`
+	SizeBytes    int64  `json:"size_bytes,omitempty"`
+	ETag         string `json:"etag,omitempty"`
+	LastModified string `json:"last_modified,omitempty"`
+	URL          string `json:"url"`
+}
+
+func ListImagesHandler(listService ObjectListService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := claimsOrUnauthorized(w, r)
+		if !ok {
+			return
+		}
+
+		ids := parseImageIDsQuery(r.URL.Query())
+		if len(ids) > 0 {
+			response := listImagesResponse{Images: make([]listImageItem, 0, len(ids))}
+			for _, id := range ids {
+				bucketName, objectKey, err := decodeImageID(id)
+				if err != nil {
+					httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", "ids must contain valid image ids", httpapi.ValidationDetails{Field: "ids", Reason: "invalid_format"})
+					return
+				}
+
+				response.Images = append(response.Images, listImageItem{
+					ID:         id,
+					BucketName: bucketName,
+					ObjectKey:  objectKey,
+					URL:        "/v1/images/" + id,
+				})
+			}
+
+			httpapi.WriteOK(w, r, response)
+			return
+		}
+
+		if listService == nil {
+			httpapi.WriteError(w, r, http.StatusNotImplemented, "not_implemented", "image list is not implemented yet", nil)
+			return
+		}
+
+		items, err := listService.ListImages(r.Context(), service.ObjectListInput{
+			ProjectID:     claims.ProjectID,
+			AppID:         claims.AppID,
+			PrincipalType: string(claims.PrincipalType),
+			PrincipalID:   claims.Subject,
+		})
+		if err != nil {
+			if errors.Is(err, service.ErrInvalidObjectListInput) {
+				httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", err.Error(), httpapi.ValidationDetails{Field: "images", Reason: "invalid_input"})
+				return
+			}
+			httpapi.WriteError(w, r, http.StatusBadGateway, "upstream_failure", "failed to list images from storage provider", nil)
+			return
+		}
+
+		response := listImagesResponse{Images: make([]listImageItem, 0, len(items))}
+		for _, item := range items {
+			id := encodeImageID(item.BucketName, item.ObjectKey)
+			responseItem := listImageItem{
+				ID:         id,
+				BucketName: item.BucketName,
+				ObjectKey:  item.ObjectKey,
+				SizeBytes:  item.Size,
+				ETag:       item.ETag,
+				URL:        "/v1/images/" + id,
+			}
+			if !item.LastModified.IsZero() {
+				responseItem.LastModified = item.LastModified.UTC().Format(time.RFC3339)
+			}
+			response.Images = append(response.Images, responseItem)
+		}
+
+		httpapi.WriteOK(w, r, response)
+	}
 }
 
 func GetImageHandler(authorizationService AuthorizationService, readService ObjectReadService) http.HandlerFunc {
@@ -107,4 +197,33 @@ func decodeImageID(id string) (bucketName string, objectKey string, err error) {
 	}
 
 	return parts[0], parts[1], nil
+}
+
+func encodeImageID(bucketName string, objectKey string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(bucketName + ":" + objectKey))
+}
+
+func parseImageIDsQuery(values url.Values) []string {
+	raw := values["ids"]
+	if len(raw) == 0 {
+		return nil
+	}
+
+	ids := make([]string, 0, len(raw))
+	seen := make(map[string]struct{})
+	for _, chunk := range raw {
+		for _, part := range strings.Split(chunk, ",") {
+			id := strings.TrimSpace(part)
+			if id == "" {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+
+	return ids
 }
