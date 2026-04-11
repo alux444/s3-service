@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -13,11 +14,12 @@ import (
 const defaultListMaxObjects = int32(200)
 
 type ListObjectsInput struct {
-	BucketName string
-	Prefix     string
-	Region     string
-	RoleARN    string
-	ExternalID *string
+	BucketName        string
+	Prefix            string
+	Region            string
+	RoleARN           string
+	ExternalID        *string
+	ContinuationToken *string
 }
 
 type ListedObject struct {
@@ -25,6 +27,11 @@ type ListedObject struct {
 	Size         int64
 	ETag         string
 	LastModified time.Time
+}
+
+type ListObjectsPageResult struct {
+	Objects               []ListedObject
+	NextContinuationToken *string
 }
 
 type listRoleConfigProvider interface {
@@ -61,11 +68,18 @@ func WithListMaxObjects(max int32) ListHelperOption {
 	}
 }
 
+func WithListLogger(logger *slog.Logger) ListHelperOption {
+	return func(h *ListHelper) {
+		h.logger = logger
+	}
+}
+
 type ListHelper struct {
 	cache         listRoleConfigProvider
 	clientFactory listClientFactory
 	retryPolicy   retryPolicy
 	maxObjects    int32
+	logger        *slog.Logger
 }
 
 func NewListHelper(cache *AssumeRoleSessionCache, opts ...ListHelperOption) *ListHelper {
@@ -73,6 +87,7 @@ func NewListHelper(cache *AssumeRoleSessionCache, opts ...ListHelperOption) *Lis
 		cache:       cache,
 		retryPolicy: defaultRetryPolicy(),
 		maxObjects:  defaultListMaxObjects,
+		logger:      slog.Default(),
 		clientFactory: func(cfg aws.Config) listClient {
 			return awss3.NewFromConfig(cfg)
 		},
@@ -86,21 +101,30 @@ func NewListHelper(cache *AssumeRoleSessionCache, opts ...ListHelperOption) *Lis
 }
 
 func (h *ListHelper) ListObjects(ctx context.Context, input ListObjectsInput) ([]ListedObject, error) {
+	result, err := h.ListObjectsPage(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	return result.Objects, nil
+}
+
+func (h *ListHelper) ListObjectsPage(ctx context.Context, input ListObjectsInput) (ListObjectsPageResult, error) {
 	if h == nil || h.cache == nil {
-		return nil, errors.New("list helper is not configured")
+		return ListObjectsPageResult{}, errors.New("list helper is not configured")
 	}
 	if input.BucketName == "" || input.Region == "" || input.RoleARN == "" {
-		return nil, fmt.Errorf("%w: bucket_name, region, and role_arn are required", ErrInvalidAssumeRoleInput)
+		return ListObjectsPageResult{}, fmt.Errorf("%w: bucket_name, region, and role_arn are required", ErrInvalidAssumeRoleInput)
 	}
 
 	cfg, err := h.cache.ConfigForRole(ctx, BucketRoleReference{Region: input.Region, RoleARN: input.RoleARN, ExternalID: input.ExternalID})
 	if err != nil {
-		return nil, fmt.Errorf("resolve role config for list objects: %w", err)
+		return ListObjectsPageResult{}, fmt.Errorf("resolve role config for list objects: %w", err)
 	}
 
 	client := h.clientFactory(cfg)
 	objects := make([]ListedObject, 0)
-	var continuationToken *string
+	continuationToken := input.ContinuationToken
+	var nextToken *string
 
 	for int32(len(objects)) < h.maxObjects {
 		remaining := h.maxObjects - int32(len(objects))
@@ -121,7 +145,7 @@ func (h *ListHelper) ListObjects(ctx context.Context, input ListObjectsInput) ([
 			})
 		})
 		if err != nil {
-			return nil, fmt.Errorf("list objects: %w", err)
+			return ListObjectsPageResult{}, fmt.Errorf("list objects: %w", err)
 		}
 
 		for _, item := range out.Contents {
@@ -132,8 +156,18 @@ func (h *ListHelper) ListObjects(ctx context.Context, input ListObjectsInput) ([
 				LastModified: aws.ToTime(item.LastModified),
 			})
 			if int32(len(objects)) >= h.maxObjects {
+				if aws.ToBool(out.IsTruncated) && out.NextContinuationToken != nil {
+					nextToken = out.NextContinuationToken
+					if h.logger != nil {
+						h.logger.InfoContext(ctx, "s3 list batch reached max objects; next continuation token available", "bucket_name", input.BucketName, "prefix", input.Prefix, "max_objects", h.maxObjects, "next_continuation_token", aws.ToString(nextToken))
+					}
+				}
 				break
 			}
+		}
+
+		if nextToken != nil {
+			break
 		}
 
 		if !aws.ToBool(out.IsTruncated) || out.NextContinuationToken == nil {
@@ -142,5 +176,5 @@ func (h *ListHelper) ListObjects(ctx context.Context, input ListObjectsInput) ([
 		continuationToken = out.NextContinuationToken
 	}
 
-	return objects, nil
+	return ListObjectsPageResult{Objects: objects, NextContinuationToken: nextToken}, nil
 }

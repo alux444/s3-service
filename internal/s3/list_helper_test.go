@@ -157,4 +157,54 @@ func TestListHelper_ListObjects(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	})
+
+	t.Run("returns next continuation token when max objects is reached", func(t *testing.T) {
+		client := &stubListClient{outs: []*awss3.ListObjectsV2Output{
+			{
+				Contents:              []awss3types.Object{{Key: aws.String("images/a.jpg")}},
+				IsTruncated:           aws.Bool(true),
+				NextContinuationToken: aws.String("token-next"),
+			},
+		}}
+		helper := &ListHelper{
+			cache:       &stubListRoleConfigProvider{cfg: aws.Config{}},
+			maxObjects:  1,
+			retryPolicy: retryPolicy{maxAttempts: 2, sleep: func(context.Context, time.Duration) error { return nil }},
+			clientFactory: func(aws.Config) listClient {
+				return client
+			},
+		}
+
+		result, err := helper.ListObjectsPage(context.Background(), ListObjectsInput{BucketName: "bucket-a", Prefix: "images/", Region: "us-east-1", RoleARN: "arn:aws:iam::123:role/s3"})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(result.Objects) != 1 {
+			t.Fatalf("expected one object, got %+v", result.Objects)
+		}
+		if result.NextContinuationToken == nil || aws.ToString(result.NextContinuationToken) != "token-next" {
+			t.Fatalf("expected next continuation token token-next, got %v", result.NextContinuationToken)
+		}
+	})
+
+	t.Run("uses input continuation token for next batch", func(t *testing.T) {
+		client := &stubListClient{outs: []*awss3.ListObjectsV2Output{{IsTruncated: aws.Bool(false)}}}
+		helper := &ListHelper{
+			cache:       &stubListRoleConfigProvider{cfg: aws.Config{}},
+			maxObjects:  10,
+			retryPolicy: retryPolicy{maxAttempts: 2, sleep: func(context.Context, time.Duration) error { return nil }},
+			clientFactory: func(aws.Config) listClient {
+				return client
+			},
+		}
+
+		startToken := "token-start"
+		_, err := helper.ListObjectsPage(context.Background(), ListObjectsInput{BucketName: "bucket-a", Prefix: "images/", Region: "us-east-1", RoleARN: "arn:aws:iam::123:role/s3", ContinuationToken: &startToken})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if client.input == nil || aws.ToString(client.input.ContinuationToken) != "token-start" {
+			t.Fatalf("expected continuation token token-start, got %+v", client.input)
+		}
+	})
 }
