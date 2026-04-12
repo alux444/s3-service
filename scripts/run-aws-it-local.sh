@@ -85,4 +85,13 @@ AWS_IT_ROLE_ARN="${IT_ROLE_ARN}" \
 AWS_IT_EXTERNAL_ID="${IT_EXTERNAL_ID}" \
 "${ROOT_DIR}/scripts/run-aws-integration.sh"
 
+log "INFO" "Running router API integration test"
+AWS_PROFILE="${RUNTIME_PROFILE}" \
+RUN_AWS_INTEGRATION=true \
+AWS_IT_BUCKET="${BUCKET_NAME}" \
+AWS_IT_REGION="${AWS_REGION}" \
+AWS_IT_ROLE_ARN="${IT_ROLE_ARN}" \
+AWS_IT_EXTERNAL_ID="${IT_EXTERNAL_ID}" \
+"${ROOT_DIR}/scripts/run-aws-api-integration.sh"
+
 log "INFO" "Local AWS integration flow completed successfully"

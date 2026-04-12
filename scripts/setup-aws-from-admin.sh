@@ -273,6 +273,19 @@ cat > "${TMP_DIR}/it-role-policy.json" <<EOF
       "Resource": "arn:aws:s3:::${BUCKET_NAME}/it/*"
     },
     {
+      "Sid": "IntegrationListForImageDiscovery",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::${BUCKET_NAME}",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "it/*"
+          ]
+        }
+      }
+    },
+    {
       "Sid": "IntegrationBaselineReads",
       "Effect": "Allow",
       "Action": [
