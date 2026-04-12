@@ -69,7 +69,7 @@ func (r *identityIPRateLimiter) middleware(next http.Handler) http.Handler {
 				w,
 				req,
 				http.StatusTooManyRequests,
-				"rate_limited",
+				"throttle",
 				"rate limit exceeded",
 				httpapi.RateLimitDetails{RetryAfter: retryAfter, Limit: r.limit, Remaining: 0},
 			)

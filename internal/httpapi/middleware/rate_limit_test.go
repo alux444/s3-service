@@ -53,8 +53,8 @@ func TestIdentityIPRateLimitMiddleware_BlocksAfterLimit(t *testing.T) {
 	if err := json.NewDecoder(rec2.Body).Decode(&got); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if got.Error == nil || got.Error.Code != "rate_limited" {
-		t.Fatalf("expected rate_limited response, got %+v", got.Error)
+	if got.Error == nil || got.Error.Code != "throttle" {
+		t.Fatalf("expected throttle response, got %+v", got.Error)
 	}
 	if got.Error.Details == nil || got.Error.Details.RetryAfter < 1 {
 		t.Fatalf("expected retryAfter >= 1, got %+v", got.Error.Details)

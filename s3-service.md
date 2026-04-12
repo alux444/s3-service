@@ -73,8 +73,8 @@ Standalone service to securely access multiple S3 buckets.
 - [x] **4.5** GET /v1/images/:id (authenticated image stream via backend, enforce `app_id` + ownership policy) `Go` `API` · 2 pts
 - [x] **4.6** GET /v1/images (authenticated image list with metadata + backend URL) `Go` `API` · 1 pt
 - [x] **4.7** DELETE /v1/images/:id (safe delete with ownership check and app delete scope) `Go` `API` · 1 pt
-- [ ] **4.8** POST /v1/objects/presign-download (optional/admin-only short-lived read links) `Go` `API` · 1 pt
-- [ ] **4.9** Unified error codes (auth_failed, forbidden, not_found, throttle, upstream_failure) `Go` `API` · 1 pt
+- [skip] **4.8** POST /v1/objects/presign-download (optional/admin-only short-lived read links) `Go` `API` · 1 pt
+- [x] **4.9** Unified error codes (auth_failed, forbidden, not_found, throttle, upstream_failure) `Go` `API` · 1 pt
 - [ ] **4.10** API docs (OpenAPI + examples for Locket integration) `Infra` `Docs` · 2 pts
 - [ ] **4.11** Full E2E test matrix for every API endpoint in this plan (including POST/DELETE create-remove flow where applicable) `Go` `API` `Test` · 2 pts
 - [ ] **4.12** Image delivery cache strategy: add ETag/Cache-Control + conditional GET (`If-None-Match`) and optional CDN in front of `/v1/images/:id` to reduce repeat S3 GETs `Go` `API` `Infra` · 2 pts
