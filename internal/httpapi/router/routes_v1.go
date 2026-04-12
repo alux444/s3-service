@@ -30,6 +30,7 @@ func registerV1Routes(r chi.Router, authMW func(http.Handler) http.Handler, audi
 			v1.Post("/objects/presign-download", handlers.PresignDownloadObjectHandlerWithService(authorizationService, objectPresignService))
 			v1.Get("/images", handlers.ListImagesHandler(objectListService))
 			v1.Get("/images/{id}", handlers.GetImageHandler(authorizationService, objectReadService))
+			v1.Delete("/images/{id}", handlers.DeleteImageHandler(authorizationService, objectDeleteService))
 		}
 	})
 }

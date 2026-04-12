@@ -181,6 +181,59 @@ func GetImageHandler(authorizationService AuthorizationService, readService Obje
 	}
 }
 
+func DeleteImageHandler(authorizationService AuthorizationService, deleteService ObjectDeleteService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := claimsOrUnauthorized(w, r)
+		if !ok {
+			return
+		}
+
+		bucketName, objectKey, err := decodeImageID(chi.URLParam(r, "id"))
+		if err != nil {
+			httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid image id", httpapi.ValidationDetails{Field: "id", Reason: "invalid_format"})
+			return
+		}
+
+		decision := authorizationService.Authorize(r.Context(), auth.AuthorizationRequest{
+			Claims:     claims,
+			BucketName: bucketName,
+			Action:     auth.ActionDelete,
+			ObjectKey:  objectKey,
+		})
+		if !decision.Allowed {
+			httpapi.WriteError(w, r, http.StatusForbidden, "forbidden", "operation not permitted for this scope", httpapi.AuthDetails{Reason: decision.Reason})
+			return
+		}
+
+		if deleteService == nil {
+			httpapi.WriteError(w, r, http.StatusNotImplemented, "not_implemented", "image delete is not implemented yet", nil)
+			return
+		}
+
+		result, err := deleteService.DeleteObject(r.Context(), service.ObjectDeleteInput{
+			ProjectID:  claims.ProjectID,
+			AppID:      claims.AppID,
+			BucketName: bucketName,
+			ObjectKey:  objectKey,
+		})
+		if err != nil {
+			switch {
+			case errors.Is(err, service.ErrInvalidObjectDeleteInput), errors.Is(err, s3.ErrDeletePrefixGuardrailViolation), errors.Is(err, s3.ErrInvalidAssumeRoleInput):
+				httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", err.Error(), httpapi.ValidationDetails{Field: "image", Reason: "invalid_input"})
+				return
+			case errors.Is(err, service.ErrBucketConnectionNotFound):
+				httpapi.WriteError(w, r, http.StatusNotFound, "not_found", "bucket connection not found for scope", httpapi.NotFoundDetails{Resource: "bucket_connection", ID: bucketName})
+				return
+			default:
+				httpapi.WriteError(w, r, http.StatusBadGateway, "upstream_failure", "failed to delete image from storage provider", nil)
+				return
+			}
+		}
+
+		httpapi.WriteOK(w, r, objectDeleteResponse{Deleted: result.Deleted, Bucket: bucketName, ObjectKey: objectKey})
+	}
+}
+
 func decodeImageID(id string) (bucketName string, objectKey string, err error) {
 	if strings.TrimSpace(id) == "" {
 		return "", "", errors.New("image id is required")

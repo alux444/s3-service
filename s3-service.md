@@ -72,7 +72,7 @@ Standalone service to securely access multiple S3 buckets.
 - [x] **4.4** POST /v1/objects/presign-upload (browser direct upload) `Go` `API` · 2 pts
 - [x] **4.5** GET /v1/images/:id (authenticated image stream via backend, enforce `app_id` + ownership policy) `Go` `API` · 2 pts
 - [x] **4.6** GET /v1/images (authenticated image list with metadata + backend URL) `Go` `API` · 1 pt
-- [ ] **4.7** DELETE /v1/images/:id (safe delete with ownership check and app delete scope) `Go` `API` · 1 pt
+- [x] **4.7** DELETE /v1/images/:id (safe delete with ownership check and app delete scope) `Go` `API` · 1 pt
 - [ ] **4.8** POST /v1/objects/presign-download (optional/admin-only short-lived read links) `Go` `API` · 1 pt
 - [ ] **4.9** Unified error codes (auth_failed, forbidden, not_found, throttle, upstream_failure) `Go` `API` · 1 pt
 - [ ] **4.10** API docs (OpenAPI + examples for Locket integration) `Infra` `Docs` · 2 pts

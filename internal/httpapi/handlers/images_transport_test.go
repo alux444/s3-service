@@ -353,6 +353,145 @@ func TestGetImageHandler(t *testing.T) {
 	})
 }
 
+func TestDeleteImageHandler(t *testing.T) {
+	claims := auth.Claims{Subject: "user-1", AppID: "app-1", ProjectID: "project-1", Role: auth.RoleProjectClient, PrincipalType: auth.PrincipalTypeUser}
+
+	t.Run("returns unauthorized when claims are missing", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{}
+		h := DeleteImageHandler(authz, nil)
+
+		req := requestWithImageID(http.MethodDelete, "/v1/images/ignored", "ignored")
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected status 401, got %d", rec.Code)
+		}
+	})
+
+	t.Run("returns bad request for invalid image id", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{}
+		h := DeleteImageHandler(authz, nil)
+
+		req := requestWithImageID(http.MethodDelete, "/v1/images/not-base64", "not-base64")
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", rec.Code)
+		}
+	})
+
+	t.Run("returns forbidden when authorization denies", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: false, Reason: auth.DecisionReasonPrefixScope}}
+		h := DeleteImageHandler(authz, nil)
+
+		id := encodeImageID("bucket-a", "uploads/a.jpg")
+		req := requestWithImageID(http.MethodDelete, "/v1/images/"+id, id)
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected status 403, got %d", rec.Code)
+		}
+		if authz.request.Action != auth.ActionDelete || authz.request.BucketName != "bucket-a" || authz.request.ObjectKey != "uploads/a.jpg" {
+			t.Fatalf("unexpected authz request: %+v", authz.request)
+		}
+	})
+
+	t.Run("returns not implemented when delete service is not configured", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+		h := DeleteImageHandler(authz, nil)
+
+		id := encodeImageID("bucket-a", "uploads/a.jpg")
+		req := requestWithImageID(http.MethodDelete, "/v1/images/"+id, id)
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotImplemented {
+			t.Fatalf("expected status 501, got %d", rec.Code)
+		}
+	})
+
+	t.Run("returns ok when delete succeeds", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+		deleteSvc := &stubObjectDeleteService{result: service.ObjectDeleteResult{Deleted: true}}
+		h := DeleteImageHandler(authz, deleteSvc)
+
+		id := encodeImageID("bucket-a", "uploads/a.jpg")
+		req := requestWithImageID(http.MethodDelete, "/v1/images/"+id, id)
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", rec.Code)
+		}
+		if deleteSvc.input.ProjectID != "project-1" || deleteSvc.input.AppID != "app-1" {
+			t.Fatalf("unexpected delete scope: %+v", deleteSvc.input)
+		}
+		if deleteSvc.input.BucketName != "bucket-a" || deleteSvc.input.ObjectKey != "uploads/a.jpg" {
+			t.Fatalf("unexpected delete input: %+v", deleteSvc.input)
+		}
+	})
+
+	t.Run("returns not found when bucket connection is missing", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+		h := DeleteImageHandler(authz, &stubObjectDeleteService{err: service.ErrBucketConnectionNotFound})
+
+		id := encodeImageID("bucket-a", "uploads/a.jpg")
+		req := requestWithImageID(http.MethodDelete, "/v1/images/"+id, id)
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected status 404, got %d", rec.Code)
+		}
+	})
+
+	t.Run("returns bad request for invalid delete input errors", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+		h := DeleteImageHandler(authz, &stubObjectDeleteService{err: service.ErrInvalidObjectDeleteInput})
+
+		id := encodeImageID("bucket-a", "uploads/a.jpg")
+		req := requestWithImageID(http.MethodDelete, "/v1/images/"+id, id)
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", rec.Code)
+		}
+	})
+
+	t.Run("returns upstream failure for unexpected errors", func(t *testing.T) {
+		authz := &stubObjectAuthorizationService{decision: auth.Decision{Allowed: true}}
+		h := DeleteImageHandler(authz, &stubObjectDeleteService{err: errors.New("s3 timeout")})
+
+		id := encodeImageID("bucket-a", "uploads/a.jpg")
+		req := requestWithImageID(http.MethodDelete, "/v1/images/"+id, id)
+		req = req.WithContext(httpmiddleware.ContextWithClaims(req.Context(), claims))
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadGateway {
+			t.Fatalf("expected status 502, got %d", rec.Code)
+		}
+	})
+}
+
 func requestWithImageID(method string, path string, id string) *http.Request {
 	req := httptest.NewRequest(method, path, nil)
 	rctx := chi.NewRouteContext()
