@@ -90,6 +90,7 @@ Standalone service to securely access multiple S3 buckets.
 - [ ] **5.3** Droplet scheduled billing checker as a separate command/job (cron or systemd timer) running every day, querying Cost Explorer APIs `Go` `FinOps` · 3 pts
 - [ ] **5.4** Daily digest payload and delivery: yesterday, month-to-date, forecast, top services, highest-growth service (send to Discord daily) `Go` `FinOps` · 2 pts
 - [ ] **5.5** Notifier reliability: job lock, retries, and dedupe for daily Discord sends `Go` `FinOps` · 2 pts
+- [ ] **5.6** PgDump periodically for database backups
 
 ---
 

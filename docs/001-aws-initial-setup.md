@@ -32,6 +32,14 @@ Run this manually from your admin profile:
 AWS_PROFILE=s3-service-admin aws iam create-access-key --user-name droplet-runtime
 ```
 
+If we need to delete a key:
+
+```bash
+AWS_PROFILE=s3-service-admin aws iam delete-access-key \
+  --user-name droplet-runtime \
+  --access-key-id <OLD_KEY_ID>
+```
+
 Save the returned `AccessKeyId` and `SecretAccessKey` securely.
 
 ## 4) Configure Runtime Profile Locally Or On Droplet
