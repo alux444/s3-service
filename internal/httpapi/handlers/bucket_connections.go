@@ -14,6 +14,7 @@ import (
 type BucketConnectionService interface {
 	ListForScope(ctx context.Context, projectID, appID string) ([]database.BucketConnection, error)
 	CreateForScope(ctx context.Context, projectID string, appID string, bucketName string, region string, roleARN string, externalID *string, allowedPrefixes []string) error
+	UpsertAccessPolicyForScope(ctx context.Context, projectID string, appID string, bucketName string, principalType string, principalID string, role string, canRead bool, canWrite bool, canDelete bool, canList bool, prefixAllowlist []string) error
 }
 
 type createBucketConnectionRequest struct {

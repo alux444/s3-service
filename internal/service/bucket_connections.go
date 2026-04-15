@@ -5,14 +5,17 @@ import (
 	"errors"
 	"fmt"
 
+	"s3-service/internal/auth"
 	"s3-service/internal/database"
 )
 
 var ErrInvalidBucketConnectionInput = errors.New("invalid bucket connection input")
+var ErrInvalidAccessPolicyInput = errors.New("invalid access policy input")
 
 type BucketConnectionsRepository interface {
 	ListActiveBucketsForConnectionScope(ctx context.Context, projectID string, appID string) ([]database.BucketConnection, error)
 	CreateBucketConnection(ctx context.Context, projectID string, appID string, bucketName string, region string, roleARN string, externalID *string, allowedPrefixes []string) error
+	UpsertAccessPolicyForConnectionScope(ctx context.Context, projectID string, appID string, bucketName string, principalType string, principalID string, role string, canRead bool, canWrite bool, canDelete bool, canList bool, prefixAllowlist []string) error
 }
 
 type BucketConnectionSecurityValidator interface {
@@ -65,4 +68,54 @@ func (s *BucketConnectionsService) CreateForScope(
 	}
 
 	return s.repo.CreateBucketConnection(ctx, projectID, appID, bucketName, region, roleARN, externalID, allowedPrefixes)
+}
+
+func (s *BucketConnectionsService) UpsertAccessPolicyForScope(
+	ctx context.Context,
+	projectID string,
+	appID string,
+	bucketName string,
+	principalType string,
+	principalID string,
+	role string,
+	canRead bool,
+	canWrite bool,
+	canDelete bool,
+	canList bool,
+	prefixAllowlist []string,
+) error {
+	if projectID == "" || appID == "" || bucketName == "" || principalType == "" || principalID == "" || role == "" {
+		return fmt.Errorf("%w: projectID, appID, bucketName, principalType, principalID, and role are required", ErrInvalidAccessPolicyInput)
+	}
+
+	if _, err := auth.ParsePrincipalType(principalType); err != nil {
+		return fmt.Errorf("%w: invalid principal type", ErrInvalidAccessPolicyInput)
+	}
+
+	if _, err := auth.ParseRole(role); err != nil {
+		return fmt.Errorf("%w: invalid role", ErrInvalidAccessPolicyInput)
+	}
+
+	err := s.repo.UpsertAccessPolicyForConnectionScope(
+		ctx,
+		projectID,
+		appID,
+		bucketName,
+		principalType,
+		principalID,
+		role,
+		canRead,
+		canWrite,
+		canDelete,
+		canList,
+		prefixAllowlist,
+	)
+	if err != nil {
+		if errors.Is(err, database.ErrBucketConnectionNotFound) {
+			return fmt.Errorf("%w: %s", ErrBucketConnectionNotFound, bucketName)
+		}
+		return err
+	}
+
+	return nil
 }

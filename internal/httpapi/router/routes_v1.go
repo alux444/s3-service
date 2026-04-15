@@ -22,6 +22,7 @@ func registerV1Routes(r chi.Router, authMW func(http.Handler) http.Handler, audi
 		if bucketService != nil {
 			v1.Post("/bucket-connections", handlers.CreateBucketConnectionHandler(bucketService))
 			v1.Get("/bucket-connections", handlers.ListBucketConnectionsHandler(bucketService))
+			v1.Post("/access-policies", handlers.UpsertAccessPolicyHandler(bucketService))
 		}
 		if authorizationService != nil {
 			v1.Post("/objects/upload", handlers.UploadObjectHandler(authorizationService, objectUploadService))

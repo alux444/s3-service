@@ -11,6 +11,7 @@ import (
 
 var ErrPolicyNotFound = errors.New("authorization policy not found")
 var ErrBucketConnectionAlreadyExists = errors.New("bucket connection already exists")
+var ErrBucketConnectionNotFound = errors.New("bucket connection not found")
 
 type BucketConnection struct {
 	BucketName      string   `json:"bucket_name"`
@@ -64,6 +65,23 @@ func (r *OwnershipRepository) CreateBucketConnection(
 
 func (r *OwnershipRepository) GetEffectiveAuthorizationPolicy(ctx context.Context, lookup AuthorizationPolicyLookup) (EffectiveAuthorizationPolicy, error) {
 	return GetEffectiveAuthorizationPolicy(ctx, r.db, lookup)
+}
+
+func (r *OwnershipRepository) UpsertAccessPolicyForConnectionScope(
+	ctx context.Context,
+	projectID string,
+	appID string,
+	bucketName string,
+	principalType string,
+	principalID string,
+	role string,
+	canRead bool,
+	canWrite bool,
+	canDelete bool,
+	canList bool,
+	prefixAllowlist []string,
+) error {
+	return UpsertAccessPolicyForConnectionScope(ctx, r.db, projectID, appID, bucketName, principalType, principalID, role, canRead, canWrite, canDelete, canList, prefixAllowlist)
 }
 
 func ListActiveBucketsForConnectionScope(ctx context.Context, db *sql.DB, projectID string, appID string) ([]BucketConnection, error) {
@@ -171,4 +189,76 @@ func GetEffectiveAuthorizationPolicy(ctx context.Context, db *sql.DB, lookup Aut
 	}
 
 	return policy, nil
+}
+
+func UpsertAccessPolicyForConnectionScope(
+	ctx context.Context,
+	db *sql.DB,
+	projectID string,
+	appID string,
+	bucketName string,
+	principalType string,
+	principalID string,
+	role string,
+	canRead bool,
+	canWrite bool,
+	canDelete bool,
+	canList bool,
+	prefixAllowlist []string,
+) error {
+	if projectID == "" || appID == "" || bucketName == "" || principalType == "" || principalID == "" || role == "" {
+		return fmt.Errorf("projectID, appID, bucketName, principalType, principalID, and role must be provided")
+	}
+
+	result, err := db.ExecContext(ctx, `
+		INSERT INTO access_policies (
+			bucket_connection_id,
+			principal_type,
+			principal_id,
+			role,
+			can_read,
+			can_write,
+			can_delete,
+			can_list,
+			prefix_allowlist
+		)
+		SELECT
+			bc.id,
+			$4,
+			$5,
+			$6,
+			$7,
+			$8,
+			$9,
+			$10,
+			$11
+		FROM bucket_connections bc
+		WHERE bc.project_id = $1
+		  AND bc.app_id = $2
+		  AND bc.bucket_name = $3
+		  AND bc.is_active = true
+		ON CONFLICT (bucket_connection_id, principal_type, principal_id)
+		DO UPDATE SET
+			role = EXCLUDED.role,
+			can_read = EXCLUDED.can_read,
+			can_write = EXCLUDED.can_write,
+			can_delete = EXCLUDED.can_delete,
+			can_list = EXCLUDED.can_list,
+			prefix_allowlist = EXCLUDED.prefix_allowlist,
+			updated_at = NOW()
+	`, projectID, appID, bucketName, principalType, principalID, role, canRead, canWrite, canDelete, canList, prefixAllowlist)
+	if err != nil {
+		return fmt.Errorf("failed to upsert access policy: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check upsert access policy rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return ErrBucketConnectionNotFound
+	}
+
+	return nil
 }

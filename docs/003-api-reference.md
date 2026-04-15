@@ -188,7 +188,50 @@ Success (`200`):
 }
 ```
 
-### 5) Upload Object (Server-Side)
+  ### 5) Upsert Access Policy (Admin Only)
+
+  `POST /v1/access-policies`
+
+  This endpoint creates or updates one access policy row for the current claim scope (`project_id` + `app_id`).
+
+  Important:
+
+  - Caller role must be `admin`.
+  - `bucket_name` must already exist in this scope via `/v1/bucket-connections`.
+  - If `can_*` fields are omitted, defaults are:
+    - `can_read=true`
+    - `can_write=false`
+    - `can_delete=false`
+    - `can_list=true`
+
+  ```bash
+  curl -s -X POST "$BASE_URL/v1/access-policies" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "bucket_name": "bucket-a",
+      "principal_type": "service",
+      "principal_id": "auth0|my-service-client-id",
+      "role": "admin",
+      "can_read": true,
+      "can_write": true,
+      "can_delete": true,
+      "can_list": true,
+      "prefix_allowlist": ["uploads/", "images/"]
+    }'
+  ```
+
+  Success (`200`):
+
+  ```json
+  {
+    "data": {
+      "upserted": true
+    }
+  }
+  ```
+
+  ### 6) Upload Object (Server-Side)
 
 `POST /v1/objects/upload`
 
@@ -221,7 +264,7 @@ Success (`201`):
 }
 ```
 
-### 6) Delete Object (Generic)
+### 7) Delete Object (Generic)
 
 `DELETE /v1/objects`
 
@@ -247,7 +290,7 @@ Success (`200`):
 }
 ```
 
-### 7) Presign Upload URL
+### 8) Presign Upload URL
 
 `POST /v1/objects/presign-upload`
 
@@ -277,7 +320,7 @@ Success (`200`):
 }
 ```
 
-### 8) Presign Download URL
+### 9) Presign Download URL
 
 `POST /v1/objects/presign-download`
 
@@ -304,7 +347,7 @@ Success (`200`):
 }
 ```
 
-### 9) List Images
+### 10) List Images
 
 `GET /v1/images`
 
@@ -370,7 +413,7 @@ Example success (`200`):
 }
 ```
 
-### 10) Get Image Bytes
+### 11) Get Image Bytes
 
 `GET /v1/images/{id}`
 
@@ -406,7 +449,7 @@ curl -s -D - "$BASE_URL/v1/images/$ID" \
   -o /dev/null
 ```
 
-### 11) Delete Image by ID
+### 12) Delete Image by ID
 
 `DELETE /v1/images/{id}`
 

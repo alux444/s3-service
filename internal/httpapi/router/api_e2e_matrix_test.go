@@ -40,6 +40,10 @@ func (s *matrixBucketService) CreateForScope(_ context.Context, _, _ string, buc
 	return nil
 }
 
+func (s *matrixBucketService) UpsertAccessPolicyForScope(_ context.Context, _, _, _, _, _, _ string, _, _, _, _ bool, _ []string) error {
+	return nil
+}
+
 type matrixAuthorizationService struct{}
 
 func (s *matrixAuthorizationService) Authorize(_ context.Context, _ auth.AuthorizationRequest) auth.Decision {
@@ -92,7 +96,7 @@ func matrixAuthMiddleware(next http.Handler) http.Handler {
 			Subject:       "user-1",
 			AppID:         "app-1",
 			ProjectID:     "project-1",
-			Role:          auth.RoleProjectClient,
+			Role:          auth.RoleAdmin,
 			PrincipalType: auth.PrincipalTypeUser,
 		}
 		next.ServeHTTP(w, r.WithContext(httpmiddleware.ContextWithClaims(r.Context(), claims)))
@@ -131,6 +135,7 @@ func TestAPIMatrix_AllActiveEndpoints_HappyPath(t *testing.T) {
 		{name: "health", method: http.MethodGet, path: "/health", wantStatus: http.StatusOK},
 		{name: "auth-check", method: http.MethodGet, path: "/v1/auth-check", wantStatus: http.StatusOK},
 		{name: "create bucket connection", method: http.MethodPost, path: "/v1/bucket-connections", body: `{"bucket_name":"bucket-b","region":"us-west-2","role_arn":"arn:aws:iam::123456789012:role/s3-runtime-role","allowed_prefixes":["images/"]}`, wantStatus: http.StatusCreated},
+		{name: "upsert access policy", method: http.MethodPost, path: "/v1/access-policies", body: `{"bucket_name":"bucket-a","principal_type":"service","principal_id":"auth0|svc-1","role":"admin","can_read":true,"can_write":true,"can_delete":false,"can_list":true,"prefix_allowlist":["images/"]}`, wantStatus: http.StatusOK},
 		{name: "list bucket connections", method: http.MethodGet, path: "/v1/bucket-connections", wantStatus: http.StatusOK},
 		{name: "upload object", method: http.MethodPost, path: "/v1/objects/upload", body: `{"bucket_name":"bucket-a","object_key":"images/cat.jpg","content_type":"image/jpeg","content_b64":"aGVsbG8="}`, wantStatus: http.StatusCreated},
 		{name: "delete object", method: http.MethodDelete, path: "/v1/objects", body: `{"bucket_name":"bucket-a","object_key":"images/cat.jpg"}`, wantStatus: http.StatusOK},

@@ -207,6 +207,7 @@ The API starts with schema only. You still need:
 
 Use API calls from docs/003-api-reference.md:
 - POST /v1/bucket-connections
+- POST /v1/access-policies
 - Then perform actions with a valid JWT principal that has matching policy rows.
 
 If your JWT claims do not map to database policy rows, /v1 actions will return forbidden.
