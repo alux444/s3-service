@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, type ReactElement } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
 import './App.css'
 
-function App() {
+export const App = (): ReactElement => {
   const [count, setCount] = useState(0)
 
   return (
@@ -117,5 +117,3 @@ function App() {
     </>
   )
 }
-
-export default App
