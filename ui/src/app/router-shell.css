@@ -1,0 +1,62 @@
+.app-shell {
+  min-height: 100svh;
+  margin: 0 auto;
+  width: min(1120px, 100%);
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 1rem;
+  box-sizing: border-box;
+  padding: 1.5rem;
+}
+
+.shell-header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.shell-header p {
+  margin: 0.5rem 0 0;
+}
+
+.shell-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.shell-nav-link {
+  text-decoration: none;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.92rem;
+}
+
+.shell-nav-link-active {
+  font-weight: 700;
+}
+
+.shell-content {
+  border: 1px solid currentColor;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+
+.route-screen h1 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.route-screen p {
+  margin: 0.75rem 0 0;
+}
+
+@media (max-width: 768px) {
+  .app-shell {
+    padding: 1rem;
+  }
+
+  .shell-content {
+    padding: 1rem;
+  }
+}
