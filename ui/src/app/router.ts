@@ -4,16 +4,14 @@ import {
   createRouter,
 } from '@tanstack/react-router'
 import type { AppDependencies } from '../core/runtime/app-dependencies'
-import {
-  AccessPoliciesRouteScreen,
-  AppShellLayout,
-  AuthRouteScreen,
-  BucketConnectionsRouteScreen,
-  ImagesRouteScreen,
-  ObjectsRouteScreen,
-  RequestsRouteScreen,
-  SetupRouteScreen,
-} from './router-shell'
+import { AccessPoliciesPage } from './pages/access-policies-page'
+import { AuthPage } from './pages/auth-page'
+import { BucketConnectionsPage } from './pages/bucket-connections-page'
+import { ImagesPage } from './pages/images-page'
+import { ObjectsPage } from './pages/objects-page'
+import { RequestsPage } from './pages/requests-page'
+import { SetupPage } from './pages/setup-page'
+import { AppShellLayout } from './router-shell'
 
 export interface AppRouterContext {
   readonly dependencies: AppDependencies
@@ -26,43 +24,43 @@ const rootRoute = createRootRouteWithContext<AppRouterContext>()({
 const setupRoute = createRoute({
   getParentRoute: (): typeof rootRoute => rootRoute,
   path: '/',
-  component: SetupRouteScreen,
+  component: SetupPage,
 })
 
 const authRoute = createRoute({
   getParentRoute: (): typeof rootRoute => rootRoute,
   path: '/auth',
-  component: AuthRouteScreen,
+  component: AuthPage,
 })
 
 const bucketConnectionsRoute = createRoute({
   getParentRoute: (): typeof rootRoute => rootRoute,
   path: '/bucket-connections',
-  component: BucketConnectionsRouteScreen,
+  component: BucketConnectionsPage,
 })
 
 const accessPoliciesRoute = createRoute({
   getParentRoute: (): typeof rootRoute => rootRoute,
   path: '/access-policies',
-  component: AccessPoliciesRouteScreen,
+  component: AccessPoliciesPage,
 })
 
 const objectsRoute = createRoute({
   getParentRoute: (): typeof rootRoute => rootRoute,
   path: '/objects',
-  component: ObjectsRouteScreen,
+  component: ObjectsPage,
 })
 
 const imagesRoute = createRoute({
   getParentRoute: (): typeof rootRoute => rootRoute,
   path: '/images',
-  component: ImagesRouteScreen,
+  component: ImagesPage,
 })
 
 const requestsRoute = createRoute({
   getParentRoute: (): typeof rootRoute => rootRoute,
   path: '/requests',
-  component: RequestsRouteScreen,
+  component: RequestsPage,
 })
 
 const routeTree = rootRoute.addChildren([
