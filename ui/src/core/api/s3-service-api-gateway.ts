@@ -134,6 +134,27 @@ const createAuthHeader = async (settingsStore: SettingsStore): Promise<string | 
   return `Bearer ${trimmedToken}`
 }
 
+const resolveRequestPath = async (
+  settingsStore: SettingsStore,
+  relativePath: string,
+): Promise<string> => {
+  const settings = await settingsStore.getSettings()
+  if (settings === undefined) {
+    return relativePath
+  }
+
+  const trimmedBaseUrl: string = settings.baseUrl.trim()
+  if (trimmedBaseUrl === '') {
+    return relativePath
+  }
+
+  const normalizedBaseUrl: string = trimmedBaseUrl.endsWith('/')
+    ? trimmedBaseUrl.slice(0, -1)
+    : trimmedBaseUrl
+  const normalizedPath: string = relativePath.startsWith('/') ? relativePath : `/${relativePath}`
+  return `${normalizedBaseUrl}${normalizedPath}`
+}
+
 const createRequestHeaders = (
   authorizationHeader: string | undefined,
   hasBody: boolean,
@@ -165,13 +186,14 @@ const requestJsonData = async <TPayload>(
   dependencies: S3ServiceApiGatewayDependencies,
   { method, path, signal, body }: JsonRequestOptions,
 ): Promise<ApiDataEnvelope<TPayload>> => {
+  const resolvedPath: string = await resolveRequestPath(dependencies.settingsStore, path)
   const authorizationHeader: string | undefined = await createAuthHeader(dependencies.settingsStore)
   const hasBody: boolean = body !== undefined
   const requestBody: string | undefined = hasBody ? JSON.stringify(body) : undefined
   const headers: Record<string, string> = createRequestHeaders(authorizationHeader, hasBody)
   const requestOptionsWithoutSignal = {
     method,
-    path,
+    path: resolvedPath,
     headers,
   }
   const requestOptionsWithoutBody =

@@ -18,6 +18,10 @@ const normalizeBaseUrl = (baseUrl: string): string => {
 }
 
 const resolveUrl = (baseUrl: string, path: string): string => {
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
+  }
+
   return `${normalizeBaseUrl(baseUrl)}${normalizePath(path)}`
 }
 
