@@ -1,31 +1,9 @@
 services:
-  postgres:
-    build:
-      context: .
-      dockerfile: Dockerfile.postgres
-    container_name: s3-service-postgres
-    ports:
-      - "55432:5432"
-    environment:
-      POSTGRES_USER: s3_service
-      POSTGRES_PASSWORD: s3_service
-      POSTGRES_DB: s3_service
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   s3-service:
     build:
       context: .
       dockerfile: Dockerfile.dev
     container_name: s3-service-api
-    depends_on:
-      postgres:
-        condition: service_healthy
     ports:
       - "8080:8080"
     volumes:
@@ -35,10 +13,10 @@ services:
     environment:
       PORT: "8080"
       LOG_LEVEL: info
-      DATABASE_URL: postgres://s3_service:s3_service@postgres:5432/s3_service?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL}
       DB_MIGRATIONS_DIR: /workspace/db/migrations
-      DB_MIGRATE_ON_STARTUP: "true"
-      DB_SCHEMA_CHECK_ON_STARTUP: "true"
+      DB_MIGRATE_ON_STARTUP: ${DB_MIGRATE_ON_STARTUP:-true}
+      DB_SCHEMA_CHECK_ON_STARTUP: ${DB_SCHEMA_CHECK_ON_STARTUP:-true}
 
   localstack:
     image: localstack/localstack:3
@@ -55,7 +33,6 @@ services:
       - localstack_data:/var/lib/localstack
 
 volumes:
-  postgres_data:
   localstack_data:
   go_mod_cache:
   go_build_cache:

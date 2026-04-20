@@ -130,7 +130,9 @@ Expected success:
 ## 4) Verify row in Postgres
 
 ~~~bash
-docker exec -i s3-service-postgres psql -U s3_service -d s3_service -c "
+export DATABASE_URL="postgres://postgres.<project-ref>:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require"
+
+psql "${DATABASE_URL}" -c "
 SELECT ap.id, ap.principal_type, ap.principal_id, ap.role,
        ap.can_read, ap.can_write, ap.can_delete, ap.can_list,
        ap.prefix_allowlist,

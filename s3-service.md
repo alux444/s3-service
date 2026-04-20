@@ -78,6 +78,7 @@ Standalone service to securely access multiple S3 buckets.
 - [x] **4.10** API docs (OpenAPI + examples for Locket integration) `Infra` `Docs` · 2 pts
 - [x] **4.11** Full E2E test matrix for every API endpoint in this plan (including POST/DELETE create-remove flow where applicable) `Go` `API` `Test` · 2 pts
 - [ ] **4.12** Image delivery cache strategy: add ETag/Cache-Control + conditional GET (`If-None-Match`) and optional CDN in front of `/v1/images/:id` to reduce repeat S3 GETs `Go` `API` `Infra` · 2 pts
+- [ ] **4.13** Check encryption at rest etc. 
 
 ---
 
