@@ -14,6 +14,7 @@ In Auth0 Dashboard:
 2. Create API (or open existing API used by this service).
 3. Set Identifier to a stable value, for example https://api.s3-service.
 4. Confirm Signing Algorithm is RS256.
+5. Access policies: Allow via Client Grant as settings - only personal app scopes
 
 Your API Identifier is the JWT_AUDIENCE value.
 
@@ -63,30 +64,31 @@ For machine-to-machine client credentials flow, create Action in Auth0:
 
 ```javascript
 exports.onExecuteCredentialsExchange = async (event, api) => {
-  api.accessToken.setCustomClaim("app_id", "app-1");
-  api.accessToken.setCustomClaim("project_id", "project-1");
-  api.accessToken.setCustomClaim("role", "admin");
-  api.accessToken.setCustomClaim("principal_type", "service");
+  const md = event.client.metadata || {};
+  const appId = md.app_id;
+  const projectId = md.project_id;
+  const role = md.role || "project-client";
+  const principalType = md.principal_type || "service";
+
+  if (!appId || !projectId) {
+    api.access.deny("invalid_request", "Missing app_id or project_id metadata");
+    return;
+  }
+
+  api.accessToken.setCustomClaim("app_id", appId);
+  api.accessToken.setCustomClaim("project_id", projectId);
+  api.accessToken.setCustomClaim("role", role);
+  api.accessToken.setCustomClaim("principal_type", principalType);
 };
 ```
+
+- We need to set Settings -> Advanced Settings -> Application Metadata for these values
 
 For user login flow, use Post Login trigger and set principal_type to user.
 
 ## 5) Request a real Auth0 access token and inspect it
 
-```bash
-export AUTH0_DOMAIN="YOUR_TENANT_DOMAIN"
-export AUTH0_CLIENT_ID="YOUR_M2M_CLIENT_ID"
-export AUTH0_CLIENT_SECRET="YOUR_M2M_CLIENT_SECRET"
-export AUTH0_AUDIENCE="https://api.s3-service"
-
-TOKEN=$(curl -fsSL "https://${AUTH0_DOMAIN}/oauth/token" \
-  -H 'content-type: application/json' \
-  -d "{\"client_id\":\"${AUTH0_CLIENT_ID}\",\"client_secret\":\"${AUTH0_CLIENT_SECRET}\",\"audience\":\"${AUTH0_AUDIENCE}\",\"grant_type\":\"client_credentials\"}" \
-  | jq -r '.access_token')
-
-echo "$TOKEN" | wc -c
-```
+Go to Applications -> the API. This should be Machine to Machine API.
 
 Decode and check claims:
 

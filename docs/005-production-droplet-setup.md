@@ -16,6 +16,9 @@ Prepare these first:
 - AWS runtime credentials prepared (step below)
 - JWT issuer/audience/JWKS values confirmed
 
+- Supabase: also add network limitations for security (Database settings -> Network restrictions)
+- Get the public ip, e.g `curl -s https://ifconfig.me`
+
 From your local machine, run the existing AWS setup flow first:
 
 ```bash
