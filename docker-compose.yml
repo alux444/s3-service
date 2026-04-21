@@ -17,6 +17,9 @@ services:
       DB_MIGRATIONS_DIR: /workspace/db/migrations
       DB_MIGRATE_ON_STARTUP: ${DB_MIGRATE_ON_STARTUP:-true}
       DB_SCHEMA_CHECK_ON_STARTUP: ${DB_SCHEMA_CHECK_ON_STARTUP:-true}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
 
   localstack:
     image: localstack/localstack:3
