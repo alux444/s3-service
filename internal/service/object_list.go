@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -62,7 +63,19 @@ func NewObjectListService(bucketRepo ObjectUploadBucketRepository, policyRepo Ob
 }
 
 func (s *ObjectListService) ListImages(ctx context.Context, input ObjectListInput) ([]ObjectListEntry, error) {
+	slog.Info("object_list_started",
+		"project_id", input.ProjectID,
+		"app_id", input.AppID,
+		"principal_type", input.PrincipalType,
+		"principal_id", input.PrincipalID,
+	)
 	if input.ProjectID == "" || input.AppID == "" || input.PrincipalType == "" || input.PrincipalID == "" {
+		slog.Info("object_list_invalid_input",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"principal_type", input.PrincipalType,
+			"principal_id", input.PrincipalID,
+		)
 		return nil, fmt.Errorf("%w: project_id, app_id, principal_type, and principal_id are required", ErrInvalidObjectListInput)
 	}
 	if s.bucketRepo == nil {
@@ -77,8 +90,18 @@ func (s *ObjectListService) ListImages(ctx context.Context, input ObjectListInpu
 
 	buckets, err := s.bucketRepo.ListActiveBucketsForConnectionScope(ctx, input.ProjectID, input.AppID)
 	if err != nil {
+		slog.Info("object_list_bucket_lookup_failed",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"error", err,
+		)
 		return nil, fmt.Errorf("list bucket connections for image list: %w", err)
 	}
+	slog.Info("object_list_bucket_lookup_completed",
+		"project_id", input.ProjectID,
+		"app_id", input.AppID,
+		"bucket_count", len(buckets),
+	)
 
 	seen := make(map[string]struct{})
 	entries := make([]ObjectListEntry, 0)
@@ -93,18 +116,43 @@ func (s *ObjectListService) ListImages(ctx context.Context, input ObjectListInpu
 		})
 		if err != nil {
 			if errors.Is(err, database.ErrPolicyNotFound) {
+				slog.Info("object_list_policy_missing",
+					"bucket_name", bucket.BucketName,
+					"principal_type", input.PrincipalType,
+					"principal_id", input.PrincipalID,
+				)
 				continue
 			}
+			slog.Info("object_list_policy_lookup_failed",
+				"bucket_name", bucket.BucketName,
+				"principal_type", input.PrincipalType,
+				"principal_id", input.PrincipalID,
+				"error", err,
+			)
 			return nil, fmt.Errorf("resolve authorization policy for list: %w", err)
 		}
 		if !policy.CanList {
+			slog.Info("object_list_policy_denied",
+				"bucket_name", bucket.BucketName,
+				"principal_type", input.PrincipalType,
+				"principal_id", input.PrincipalID,
+			)
 			continue
 		}
 
 		prefixes := intersectAllowedPrefixes(policy.ConnectionPrefixes, policy.PrincipalPrefixes)
 		if len(prefixes) == 0 {
+			slog.Info("object_list_no_intersecting_prefixes",
+				"bucket_name", bucket.BucketName,
+				"principal_type", input.PrincipalType,
+				"principal_id", input.PrincipalID,
+			)
 			continue
 		}
+		slog.Info("object_list_prefixes_resolved",
+			"bucket_name", bucket.BucketName,
+			"prefix_count", len(prefixes),
+		)
 
 		for _, prefix := range prefixes {
 			objects, err := s.lister.ListObjects(ctx, ObjectListRequest{
@@ -115,8 +163,18 @@ func (s *ObjectListService) ListImages(ctx context.Context, input ObjectListInpu
 				Prefix:     prefix,
 			})
 			if err != nil {
+				slog.Info("object_list_upstream_failed",
+					"bucket_name", bucket.BucketName,
+					"prefix", prefix,
+					"error", err,
+				)
 				return nil, fmt.Errorf("list objects for prefix %q: %w", prefix, err)
 			}
+			slog.Info("object_list_prefix_completed",
+				"bucket_name", bucket.BucketName,
+				"prefix", prefix,
+				"object_count", len(objects),
+			)
 
 			for _, object := range objects {
 				if object.ObjectKey == "" || strings.HasSuffix(object.ObjectKey, "/") {
@@ -148,6 +206,11 @@ func (s *ObjectListService) ListImages(ctx context.Context, input ObjectListInpu
 		return entries[i].LastModified.After(entries[j].LastModified)
 	})
 
+	slog.Info("object_list_completed",
+		"project_id", input.ProjectID,
+		"app_id", input.AppID,
+		"result_count", len(entries),
+	)
 	return entries, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"s3-service/internal/database"
 )
@@ -43,7 +44,19 @@ func NewObjectReadService(bucketRepo ObjectUploadBucketRepository, reader Object
 }
 
 func (s *ObjectReadService) ReadObject(ctx context.Context, input ObjectReadInput) (ObjectReadResult, error) {
+	slog.Info("object_read_started",
+		"project_id", input.ProjectID,
+		"app_id", input.AppID,
+		"bucket_name", input.BucketName,
+		"object_key", input.ObjectKey,
+	)
 	if input.ProjectID == "" || input.AppID == "" || input.BucketName == "" || input.ObjectKey == "" {
+		slog.Info("object_read_invalid_input",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"bucket_name", input.BucketName,
+			"object_key", input.ObjectKey,
+		)
 		return ObjectReadResult{}, fmt.Errorf("%w: project_id, app_id, bucket_name and object_key are required", ErrInvalidObjectReadInput)
 	}
 	if s.bucketRepo == nil {
@@ -55,6 +68,12 @@ func (s *ObjectReadService) ReadObject(ctx context.Context, input ObjectReadInpu
 
 	buckets, err := s.bucketRepo.ListActiveBucketsForConnectionScope(ctx, input.ProjectID, input.AppID)
 	if err != nil {
+		slog.Info("object_read_bucket_lookup_failed",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"bucket_name", input.BucketName,
+			"error", err,
+		)
 		return ObjectReadResult{}, fmt.Errorf("list bucket connections for read: %w", err)
 	}
 
@@ -66,6 +85,11 @@ func (s *ObjectReadService) ReadObject(ctx context.Context, input ObjectReadInpu
 		}
 	}
 	if selected == nil {
+		slog.Info("object_read_bucket_not_found",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"bucket_name", input.BucketName,
+		)
 		return ObjectReadResult{}, fmt.Errorf("%w: %s", ErrBucketConnectionNotFound, input.BucketName)
 	}
 
@@ -75,5 +99,20 @@ func (s *ObjectReadService) ReadObject(ctx context.Context, input ObjectReadInpu
 	readInput.ExternalID = selected.ExternalID
 	readInput.AllowedPrefixes = selected.AllowedPrefixes
 
-	return s.reader.ReadObject(ctx, readInput)
+	result, err := s.reader.ReadObject(ctx, readInput)
+	if err != nil {
+		slog.Info("object_read_upstream_failed",
+			"bucket_name", input.BucketName,
+			"object_key", input.ObjectKey,
+			"error", err,
+		)
+		return ObjectReadResult{}, err
+	}
+	slog.Info("object_read_completed",
+		"bucket_name", input.BucketName,
+		"object_key", input.ObjectKey,
+		"content_type", result.ContentType,
+		"content_length", result.ContentLength,
+	)
+	return result, nil
 }

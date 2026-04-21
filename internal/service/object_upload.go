@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"s3-service/internal/database"
 )
@@ -50,10 +51,28 @@ func NewObjectUploadService(bucketRepo ObjectUploadBucketRepository, uploader Ob
 }
 
 func (s *ObjectUploadService) UploadObject(ctx context.Context, input ObjectUploadInput) (ObjectUploadResult, error) {
+	slog.Info("object_upload_started",
+		"project_id", input.ProjectID,
+		"app_id", input.AppID,
+		"bucket_name", input.BucketName,
+		"object_key", input.ObjectKey,
+		"content_type", input.ContentType,
+		"body_size", len(input.Body),
+	)
 	if input.ProjectID == "" || input.AppID == "" || input.BucketName == "" || input.ObjectKey == "" {
+		slog.Info("object_upload_invalid_input",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"bucket_name", input.BucketName,
+			"object_key", input.ObjectKey,
+		)
 		return ObjectUploadResult{}, fmt.Errorf("%w: project_id, app_id, bucket_name and object_key are required", ErrInvalidObjectUploadInput)
 	}
 	if len(input.Body) == 0 {
+		slog.Info("object_upload_invalid_body_empty",
+			"bucket_name", input.BucketName,
+			"object_key", input.ObjectKey,
+		)
 		return ObjectUploadResult{}, fmt.Errorf("%w: body is required", ErrInvalidObjectUploadInput)
 	}
 	if s.bucketRepo == nil {
@@ -65,6 +84,12 @@ func (s *ObjectUploadService) UploadObject(ctx context.Context, input ObjectUplo
 
 	buckets, err := s.bucketRepo.ListActiveBucketsForConnectionScope(ctx, input.ProjectID, input.AppID)
 	if err != nil {
+		slog.Info("object_upload_bucket_lookup_failed",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"bucket_name", input.BucketName,
+			"error", err,
+		)
 		return ObjectUploadResult{}, fmt.Errorf("list bucket connections for upload: %w", err)
 	}
 
@@ -76,6 +101,11 @@ func (s *ObjectUploadService) UploadObject(ctx context.Context, input ObjectUplo
 		}
 	}
 	if selected == nil {
+		slog.Info("object_upload_bucket_not_found",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"bucket_name", input.BucketName,
+		)
 		return ObjectUploadResult{}, fmt.Errorf("%w: %s", ErrBucketConnectionNotFound, input.BucketName)
 	}
 
@@ -84,5 +114,20 @@ func (s *ObjectUploadService) UploadObject(ctx context.Context, input ObjectUplo
 	uploadInput.RoleARN = selected.RoleARN
 	uploadInput.ExternalID = selected.ExternalID
 
-	return s.uploader.UploadObject(ctx, uploadInput)
+	result, err := s.uploader.UploadObject(ctx, uploadInput)
+	if err != nil {
+		slog.Info("object_upload_upstream_failed",
+			"bucket_name", input.BucketName,
+			"object_key", input.ObjectKey,
+			"error", err,
+		)
+		return ObjectUploadResult{}, err
+	}
+	slog.Info("object_upload_completed",
+		"bucket_name", input.BucketName,
+		"object_key", input.ObjectKey,
+		"size", result.Size,
+		"etag", result.ETag,
+	)
+	return result, nil
 }

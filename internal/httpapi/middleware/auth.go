@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
+
 	"s3-service/internal/auth"
 	"s3-service/internal/httpapi"
 )
@@ -20,8 +22,14 @@ type tokenVerifier interface {
 func JWTAuthMiddleware(logger *slog.Logger, verifier tokenVerifier) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestID := chimiddleware.GetReqID(r.Context())
 			tokenString, ok := bearerTokenFromHeader(r.Header.Get("Authorization"))
 			if !ok {
+				logger.Info("auth_rejected_missing_bearer_token",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"request_id", requestID,
+				)
 				httpapi.WriteError(w, r, http.StatusUnauthorized, "auth_failed", "missing bearer token", httpapi.AuthDetails{Reason: "missing"})
 				return
 			}
@@ -34,10 +42,25 @@ func JWTAuthMiddleware(logger *slog.Logger, verifier tokenVerifier) func(http.Ha
 				}
 
 				logger.Warn("failed to verify JWT", "error", err, "reason", reason)
+				logger.Info("auth_rejected_invalid_token",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"request_id", requestID,
+					"reason", reason,
+				)
 				httpapi.WriteError(w, r, http.StatusUnauthorized, "auth_failed", "invalid authorization token", httpapi.AuthDetails{Reason: reason})
 				return
 			}
 
+			logger.Info("auth_verified",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"request_id", requestID,
+				"principal_type", claims.PrincipalType,
+				"subject", claims.Subject,
+				"project_id", claims.ProjectID,
+				"app_id", claims.AppID,
+			)
 			ctx := context.WithValue(r.Context(), claimsContextKey{}, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

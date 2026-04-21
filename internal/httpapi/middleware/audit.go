@@ -19,6 +19,11 @@ type AuditEventRecorder interface {
 func AuditEventsMiddleware(logger *slog.Logger, recorder AuditEventRecorder) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			logger.Info("audit_capture_started",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"request_id", chimiddleware.GetReqID(r.Context()),
+			)
 			ww := chimiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			next.ServeHTTP(ww, r)
 
@@ -65,7 +70,27 @@ func AuditEventsMiddleware(logger *slog.Logger, recorder AuditEventRecorder) fun
 
 			if err := recorder.RecordEvent(r.Context(), event); err != nil {
 				logger.Warn("failed to record audit event", "error", err, "path", r.URL.Path)
+				logger.Info("audit_capture_failed",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"request_id", event.RequestID,
+					"http_status", status,
+					"outcome", outcome,
+				)
+				return
 			}
+			logger.Info("audit_capture_completed",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"request_id", event.RequestID,
+				"http_status", status,
+				"outcome", outcome,
+				"actor_type", actorType,
+				"actor_id", actorID,
+				"project_id", projectID,
+				"app_id", appID,
+				"action", event.Action,
+			)
 		})
 	}
 }

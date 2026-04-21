@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"s3-service/internal/auth"
@@ -27,12 +28,21 @@ type upsertAccessPolicyResponse struct {
 
 func UpsertAccessPolicyHandler(bucketService BucketConnectionService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("upsert_access_policy_handler_started",
+			"method", r.Method,
+			"path", r.URL.Path,
+		)
 		claims, ok := claimsOrUnauthorized(w, r)
 		if !ok {
 			return
 		}
 
 		if claims.Role != auth.RoleAdmin {
+			slog.Info("upsert_access_policy_handler_forbidden_role",
+				"project_id", claims.ProjectID,
+				"app_id", claims.AppID,
+				"role", claims.Role,
+			)
 			httpapi.WriteError(w, r, http.StatusForbidden, "forbidden", "only admin role can manage access policies", httpapi.AuthDetails{Reason: "role_required"})
 			return
 		}
@@ -90,6 +100,15 @@ func UpsertAccessPolicyHandler(bucketService BucketConnectionService) http.Handl
 			req.PrefixAllowlist,
 		)
 		if err != nil {
+			slog.Info("upsert_access_policy_handler_failed",
+				"project_id", claims.ProjectID,
+				"app_id", claims.AppID,
+				"bucket_name", req.BucketName,
+				"principal_type", req.PrincipalType,
+				"principal_id", req.PrincipalID,
+				"role", req.Role,
+				"error", err,
+			)
 			switch {
 			case errors.Is(err, service.ErrInvalidAccessPolicyInput):
 				httpapi.WriteError(w, r, http.StatusBadRequest, "invalid_request", err.Error(), httpapi.ValidationDetails{Field: "access_policy", Reason: "invalid_input"})
@@ -103,6 +122,14 @@ func UpsertAccessPolicyHandler(bucketService BucketConnectionService) http.Handl
 			}
 		}
 
+		slog.Info("upsert_access_policy_handler_completed",
+			"project_id", claims.ProjectID,
+			"app_id", claims.AppID,
+			"bucket_name", req.BucketName,
+			"principal_type", req.PrincipalType,
+			"principal_id", req.PrincipalID,
+			"role", req.Role,
+		)
 		httpapi.WriteOK(w, r, upsertAccessPolicyResponse{Upserted: true})
 	}
 }

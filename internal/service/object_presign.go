@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -64,15 +65,40 @@ func NewObjectPresignService(bucketRepo ObjectUploadBucketRepository, presigner 
 }
 
 func (s *ObjectPresignService) PresignObject(ctx context.Context, input ObjectPresignInput) (ObjectPresignResult, error) {
+	slog.Info("object_presign_started",
+		"project_id", input.ProjectID,
+		"app_id", input.AppID,
+		"bucket_name", input.BucketName,
+		"object_key", input.ObjectKey,
+		"method", input.Method,
+		"expires_in_sec", int64(input.ExpiresIn/time.Second),
+	)
 	if input.ProjectID == "" || input.AppID == "" || input.BucketName == "" || input.ObjectKey == "" || input.Method == "" {
+		slog.Info("object_presign_invalid_input_missing_fields",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"bucket_name", input.BucketName,
+			"object_key", input.ObjectKey,
+			"method", input.Method,
+		)
 		return ObjectPresignResult{}, fmt.Errorf("%w: project_id, app_id, bucket_name, object_key, and method are required", ErrInvalidObjectPresignInput)
 	}
 
 	method := strings.ToUpper(strings.TrimSpace(input.Method))
 	if method != PresignMethodGet && method != PresignMethodPut {
+		slog.Info("object_presign_invalid_method",
+			"bucket_name", input.BucketName,
+			"object_key", input.ObjectKey,
+			"method", method,
+		)
 		return ObjectPresignResult{}, fmt.Errorf("%w: method must be GET or PUT", ErrInvalidObjectPresignInput)
 	}
 	if method == PresignMethodPut && strings.TrimSpace(input.ContentType) == "" {
+		slog.Info("object_presign_invalid_content_type_missing_for_put",
+			"bucket_name", input.BucketName,
+			"object_key", input.ObjectKey,
+			"method", method,
+		)
 		return ObjectPresignResult{}, fmt.Errorf("%w: content_type is required for PUT presign", ErrInvalidObjectPresignInput)
 	}
 
@@ -85,6 +111,12 @@ func (s *ObjectPresignService) PresignObject(ctx context.Context, input ObjectPr
 
 	buckets, err := s.bucketRepo.ListActiveBucketsForConnectionScope(ctx, input.ProjectID, input.AppID)
 	if err != nil {
+		slog.Info("object_presign_bucket_lookup_failed",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"bucket_name", input.BucketName,
+			"error", err,
+		)
 		return ObjectPresignResult{}, fmt.Errorf("list bucket connections for presign: %w", err)
 	}
 
@@ -112,14 +144,31 @@ func (s *ObjectPresignService) PresignObject(ctx context.Context, input ObjectPr
 	}
 
 	if !found {
+		slog.Info("object_presign_bucket_not_found",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"bucket_name", input.BucketName,
+		)
 		return ObjectPresignResult{}, fmt.Errorf("%w: %s", ErrBucketConnectionNotFound, input.BucketName)
 	}
 
 	result, err := s.presigner.PresignObject(ctx, selectedBucket)
 	if err != nil {
+		slog.Info("object_presign_upstream_failed",
+			"bucket_name", input.BucketName,
+			"object_key", input.ObjectKey,
+			"method", method,
+			"error", err,
+		)
 		return ObjectPresignResult{}, err
 	}
 
+	slog.Info("object_presign_completed",
+		"bucket_name", input.BucketName,
+		"object_key", input.ObjectKey,
+		"method", result.Method,
+		"expires_in_sec", int64(result.ExpiresIn/time.Second),
+	)
 	return result, nil
 }
 

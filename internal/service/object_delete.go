@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"s3-service/internal/database"
 )
@@ -39,7 +40,19 @@ func NewObjectDeleteService(bucketRepo ObjectUploadBucketRepository, deleter Obj
 }
 
 func (s *ObjectDeleteService) DeleteObject(ctx context.Context, input ObjectDeleteInput) (ObjectDeleteResult, error) {
+	slog.Info("object_delete_started",
+		"project_id", input.ProjectID,
+		"app_id", input.AppID,
+		"bucket_name", input.BucketName,
+		"object_key", input.ObjectKey,
+	)
 	if input.ProjectID == "" || input.AppID == "" || input.BucketName == "" || input.ObjectKey == "" {
+		slog.Info("object_delete_invalid_input",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"bucket_name", input.BucketName,
+			"object_key", input.ObjectKey,
+		)
 		return ObjectDeleteResult{}, fmt.Errorf("%w: project_id, app_id, bucket_name and object_key are required", ErrInvalidObjectDeleteInput)
 	}
 	if s.bucketRepo == nil {
@@ -51,6 +64,12 @@ func (s *ObjectDeleteService) DeleteObject(ctx context.Context, input ObjectDele
 
 	buckets, err := s.bucketRepo.ListActiveBucketsForConnectionScope(ctx, input.ProjectID, input.AppID)
 	if err != nil {
+		slog.Info("object_delete_bucket_lookup_failed",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"bucket_name", input.BucketName,
+			"error", err,
+		)
 		return ObjectDeleteResult{}, fmt.Errorf("list bucket connections for delete: %w", err)
 	}
 
@@ -62,6 +81,11 @@ func (s *ObjectDeleteService) DeleteObject(ctx context.Context, input ObjectDele
 		}
 	}
 	if selected == nil {
+		slog.Info("object_delete_bucket_not_found",
+			"project_id", input.ProjectID,
+			"app_id", input.AppID,
+			"bucket_name", input.BucketName,
+		)
 		return ObjectDeleteResult{}, fmt.Errorf("%w: %s", ErrBucketConnectionNotFound, input.BucketName)
 	}
 
@@ -76,7 +100,17 @@ func (s *ObjectDeleteService) DeleteObject(ctx context.Context, input ObjectDele
 		AllowedPrefixes: selected.AllowedPrefixes,
 	})
 	if err != nil {
+		slog.Info("object_delete_upstream_failed",
+			"bucket_name", input.BucketName,
+			"object_key", input.ObjectKey,
+			"error", err,
+		)
 		return ObjectDeleteResult{}, err
 	}
+	slog.Info("object_delete_completed",
+		"bucket_name", input.BucketName,
+		"object_key", input.ObjectKey,
+		"deleted", result.Deleted,
+	)
 	return result, nil
 }

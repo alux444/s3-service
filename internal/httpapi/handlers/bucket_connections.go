@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"s3-service/internal/database"
@@ -35,6 +36,10 @@ type listBucketConnectionsResponse struct {
 
 func CreateBucketConnectionHandler(bucketService BucketConnectionService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("create_bucket_connection_handler_started",
+			"method", r.Method,
+			"path", r.URL.Path,
+		)
 		claims, ok := claimsOrUnauthorized(w, r)
 		if !ok {
 			return
@@ -56,6 +61,13 @@ func CreateBucketConnectionHandler(bucketService BucketConnectionService) http.H
 			req.AllowedPrefixes,
 		)
 		if err != nil {
+			slog.Info("create_bucket_connection_handler_failed",
+				"project_id", claims.ProjectID,
+				"app_id", claims.AppID,
+				"bucket_name", req.BucketName,
+				"region", req.Region,
+				"error", err,
+			)
 			if errors.Is(err, service.ErrInvalidBucketConnectionInput) {
 				writeRequiredFieldsError(w, r, "bucket_name, region, and role_arn are required", "bucket_name", "region", "role_arn")
 				return
@@ -72,12 +84,22 @@ func CreateBucketConnectionHandler(bucketService BucketConnectionService) http.H
 			return
 		}
 
+		slog.Info("create_bucket_connection_handler_completed",
+			"project_id", claims.ProjectID,
+			"app_id", claims.AppID,
+			"bucket_name", req.BucketName,
+			"region", req.Region,
+		)
 		httpapi.WriteCreated(w, r, createBucketConnectionResponse{Created: true})
 	}
 }
 
 func ListBucketConnectionsHandler(bucketService BucketConnectionService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("list_bucket_connections_handler_started",
+			"method", r.Method,
+			"path", r.URL.Path,
+		)
 		claims, ok := claimsOrUnauthorized(w, r)
 		if !ok {
 			return
@@ -85,10 +107,20 @@ func ListBucketConnectionsHandler(bucketService BucketConnectionService) http.Ha
 
 		buckets, err := bucketService.ListForScope(r.Context(), claims.ProjectID, claims.AppID)
 		if err != nil {
+			slog.Info("list_bucket_connections_handler_failed",
+				"project_id", claims.ProjectID,
+				"app_id", claims.AppID,
+				"error", err,
+			)
 			httpapi.WriteError(w, r, http.StatusInternalServerError, "list_buckets_failed", "failed to list bucket connections", nil)
 			return
 		}
 
+		slog.Info("list_bucket_connections_handler_completed",
+			"project_id", claims.ProjectID,
+			"app_id", claims.AppID,
+			"bucket_count", len(buckets),
+		)
 		httpapi.WriteOK(w, r, listBucketConnectionsResponse{Buckets: buckets})
 	}
 }

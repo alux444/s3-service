@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log/slog"
 	"net"
 	"net/http"
 	"strconv"
@@ -52,6 +53,11 @@ func (r *identityIPRateLimiter) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		identity, ok := callerIdentity(req)
 		if !ok {
+			slog.Info("rate_limit_rejected_missing_identity",
+				"method", req.Method,
+				"path", req.URL.Path,
+				"ip", clientIP(req),
+			)
 			httpapi.WriteError(w, req, http.StatusUnauthorized, "auth_failed", "authentication required", httpapi.AuthDetails{Reason: "missing"})
 			return
 		}
@@ -64,6 +70,14 @@ func (r *identityIPRateLimiter) middleware(next http.Handler) http.Handler {
 		w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
 
 		if !allowed {
+			slog.Info("rate_limit_exceeded",
+				"method", req.Method,
+				"path", req.URL.Path,
+				"identity", identity,
+				"ip", ip,
+				"limit", r.limit,
+				"retry_after_sec", retryAfter,
+			)
 			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
 			httpapi.WriteError(
 				w,
@@ -76,6 +90,14 @@ func (r *identityIPRateLimiter) middleware(next http.Handler) http.Handler {
 			return
 		}
 
+		slog.Info("rate_limit_allowed",
+			"method", req.Method,
+			"path", req.URL.Path,
+			"identity", identity,
+			"ip", ip,
+			"remaining", remaining,
+			"limit", r.limit,
+		)
 		next.ServeHTTP(w, req)
 	})
 }
