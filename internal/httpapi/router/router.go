@@ -14,6 +14,7 @@ import (
 
 func NewRouter(logger *slog.Logger, authMW func(http.Handler) http.Handler, bucketService handlers.BucketConnectionService, authorizationService handlers.AuthorizationService, objectUploadService handlers.ObjectUploadService, objectDeleteService handlers.ObjectDeleteService, objectPresignService handlers.ObjectPresignService, objectListService handlers.ObjectListService, objectReadService handlers.ObjectReadService, auditRecorder httpmiddleware.AuditEventRecorder) http.Handler {
 	r := chi.NewRouter()
+	r.Use(httpmiddleware.CORS)
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
 	r.Use(httpmiddleware.RecoverJSON(logger))
