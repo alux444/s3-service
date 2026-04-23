@@ -3,8 +3,10 @@ package database
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -103,9 +105,15 @@ func ListActiveBucketsForConnectionScope(ctx context.Context, db *sql.DB, projec
 	var buckets []BucketConnection
 	for rows.Next() {
 		var bucket BucketConnection
-		if err := rows.Scan(&bucket.BucketName, &bucket.Region, &bucket.RoleARN, &bucket.ExternalID, &bucket.AllowedPrefixes); err != nil {
+		var allowedPrefixesRaw any
+		if err := rows.Scan(&bucket.BucketName, &bucket.Region, &bucket.RoleARN, &bucket.ExternalID, &allowedPrefixesRaw); err != nil {
 			return nil, fmt.Errorf("failed to scan bucket connection row: %w", err)
 		}
+		allowedPrefixes, err := decodeStringSliceDBValue(allowedPrefixesRaw)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode allowed_prefixes: %w", err)
+		}
+		bucket.AllowedPrefixes = allowedPrefixes
 		buckets = append(buckets, bucket)
 	}
 
@@ -173,13 +181,15 @@ func GetEffectiveAuthorizationPolicy(ctx context.Context, db *sql.DB, lookup Aut
 		`
 
 	var policy EffectiveAuthorizationPolicy
+	var connectionPrefixesRaw any
+	var principalPrefixesRaw any
 	err := db.QueryRowContext(ctx, query, lookup.ProjectID, lookup.AppID, lookup.BucketName, lookup.PrincipalType, lookup.PrincipalID).Scan(
 		&policy.CanRead,
 		&policy.CanWrite,
 		&policy.CanDelete,
 		&policy.CanList,
-		&policy.ConnectionPrefixes,
-		&policy.PrincipalPrefixes,
+		&connectionPrefixesRaw,
+		&principalPrefixesRaw,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -187,8 +197,99 @@ func GetEffectiveAuthorizationPolicy(ctx context.Context, db *sql.DB, lookup Aut
 		}
 		return EffectiveAuthorizationPolicy{}, fmt.Errorf("failed to query effective authorization policy: %w", err)
 	}
+	connectionPrefixes, err := decodeStringSliceDBValue(connectionPrefixesRaw)
+	if err != nil {
+		return EffectiveAuthorizationPolicy{}, fmt.Errorf("failed to decode connection prefixes: %w", err)
+	}
+	principalPrefixes, err := decodeStringSliceDBValue(principalPrefixesRaw)
+	if err != nil {
+		return EffectiveAuthorizationPolicy{}, fmt.Errorf("failed to decode principal prefixes: %w", err)
+	}
+	policy.ConnectionPrefixes = connectionPrefixes
+	policy.PrincipalPrefixes = principalPrefixes
 
 	return policy, nil
+}
+
+func decodeStringSliceDBValue(raw any) ([]string, error) {
+	switch v := raw.(type) {
+	case nil:
+		return []string{}, nil
+	case []string:
+		return v, nil
+	case string:
+		return parseStringSliceValue(v)
+	case []byte:
+		return parseStringSliceValue(string(v))
+	default:
+		return nil, fmt.Errorf("unsupported value type %T", raw)
+	}
+}
+
+func parseStringSliceValue(value string) ([]string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || trimmed == "{}" || trimmed == "[]" {
+		return []string{}, nil
+	}
+	// handle JSON arrays
+	if strings.HasPrefix(trimmed, "[") {
+		var values []string
+		if err := json.Unmarshal([]byte(trimmed), &values); err != nil {
+			return nil, fmt.Errorf("invalid JSON array format: %w", err)
+		}
+		return values, nil
+	}
+	if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") {
+		return parsePostgresArrayLiteral(trimmed), nil
+	}
+
+	parts := strings.Split(trimmed, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		p := strings.TrimSpace(part)
+		if p != "" {
+			values = append(values, p)
+		}
+	}
+	return values, nil
+}
+
+// examples: {prefix1, prefix2}, {"prefix1","prefix2"}
+func parsePostgresArrayLiteral(literal string) []string {
+	body := strings.TrimSuffix(strings.TrimPrefix(literal, "{"), "}")
+	if strings.TrimSpace(body) == "" {
+		return []string{}
+	}
+
+	values := make([]string, 0)
+	var current strings.Builder
+	inQuotes := false
+	escaped := false
+	for _, r := range body {
+		switch {
+		case escaped:
+			current.WriteRune(r)
+			escaped = false
+		case r == '\\':
+			escaped = true
+		case r == '"':
+			inQuotes = !inQuotes
+		case r == ',' && !inQuotes:
+			item := strings.TrimSpace(current.String())
+			if item != "" {
+				values = append(values, item)
+			}
+			current.Reset()
+		default:
+			current.WriteRune(r)
+		}
+	}
+
+	item := strings.TrimSpace(current.String())
+	if item != "" {
+		values = append(values, item)
+	}
+	return values
 }
 
 func UpsertAccessPolicyForConnectionScope(

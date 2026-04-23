@@ -198,28 +198,35 @@ If these succeed, the bucket and role inputs are ready for the app onboarding UI
 
 ## 5) Registering a new bucket (full /ui flow)
 
-### 5.1 Admin logs in and `/ui` acquires token first
+This section is written as an operator runbook. Follow it exactly in order.
 
-`/ui` should do token work before any setup API calls:
-1. sign in as admin
-2. obtain fresh token
-3. verify claim scope (`project_id`, `app_id`, `role`, `principal_type`)
+### 5.1 Pre-flight values you must have before opening `/ui`
 
-If token is missing/expired or role is not admin, block setup actions in the UI.
+Collect these values first:
+1. `project_id` (example: `project-1`)
+2. `app_id` (example: `app-2`)
+3. `bucket_name` (example output from section 4.2)
+4. `region` (example: `ap-southeast-2`)
+5. `role_arn` (example: `arn:aws:iam::123456789012:role/s3-service-bucket-access`)
+6. `allowed_prefixes` for the connection (example: `uploads/project-1/app-2/`)
+7. `prefix_allowlist` for the runtime policy (usually same as `allowed_prefixes`)
 
-### 5.1.1 If your setup page has a manual Token input field
+### 5.2 Token step (must pass before any setup action)
 
-Use this flow when `/ui` expects you to paste a bearer token before enabling setup actions.
+1. Sign in as an admin user in `/ui`, or paste an admin bearer token if your setup page is token-based.
+2. Click **Validate Token**.
+3. Confirm token check output shows:
+   - `role = admin`
+   - `project_id = <your target project_id>`
+   - `app_id = <your target app_id>`
+   - `principal_type` present
+4. If any value does not match, stop. Do not continue onboarding with that token.
 
-1. Generate an admin token outside the browser (terminal/server-side).
-2. Paste token into `/ui` Setup Token field.
-3. Click Validate Token (or equivalent).
-4. `/ui` calls `GET /v1/auth-check` with that token.
-5. Enable setup buttons only if:
-    - `role=admin`
-    - `project_id` and `app_id` match the app scope you are onboarding.
+#### 5.2.1 If your setup page has a manual token field
 
-Example terminal command to mint token (admin setup client):
+Generate an admin token (server-side/terminal), then paste it into the UI.
+
+Example token mint command (admin setup client):
 
 ```bash
 export AUTH0_DOMAIN="<your-tenant>.us.auth0.com"
@@ -240,58 +247,86 @@ Important:
 2. Do not store it permanently in local storage.
 3. Re-mint and re-validate when expired.
 
-### 5.2 Admin opens New App Onboarding in `/ui`
+### 5.3 Fill the Bucket Connection form 
 
-UI form fields:
-1. `project_id`
-2. `app_id`
-3. `bucket_name`
-4. `region`
-5. `role_arn`
-6. `allowed_prefixes` (for example `uploads/`, `images/`)
+In the Bucket Connection screen, fill exactly these UI fields:
 
-UI actions:
-1. prefill known scope values where possible
-2. allow editing bucket fields for this app scope
+1. **Bucket Name**: exact bucket name from AWS output.
+2. **Region**: exact AWS region for that bucket.
+3. **Role ARN**: exact IAM role ARN used by this service.
+4. **External ID**: optional value required only if the IAM role trust policy enforces an external ID.
+5. **Allowed Prefixes**: one prefix per line (or comma separated if your UI uses commas).
 
-### 5.3 `/ui` creates bucket connection
+Notes:
+1. `External ID` can be left blank if your role trust policy does not require it. This is usually for a third party to access, so we don't usually need this.
+2. If your security team requires `External ID`, paste the exact value configured in the IAM role trust relationship.
+3. Do not add wildcard-style broad prefixes unless explicitly required.
 
-`/ui` calls:
-1. `POST /v1/bucket-connections` with admin token.
+Recommended first-time safe value:
+1. `allowed_prefixes = ["uploads/project-1/app-2/"]`
 
-The service enforces:
-1. scope from token claims (`project_id`, `app_id`)
-2. S3 baseline checks (bucket privacy + ownership settings)
+### 5.4 Click Create Connection and verify result
 
-UI should show:
-1. success: connection created
-2. failure: actionable reason from error code
+1. Click **Create Connection**.
+2. `/ui` sends `POST /v1/bucket-connections` with your admin token.
+3. Success criteria in UI:
+   - HTTP status indicates success
+   - confirmation toast/message shows connection created
+4. Failure criteria in UI:
+   - show exact API error code/message
+   - keep form values so operator can correct and retry
 
-### 5.4 `/ui` creates runtime access policy
+### 5.5 Fill the Access Policy form (runtime principal permissions)
 
-UI form fields:
-1. permission toggles: read/write/delete/list
-2. `prefix_allowlist`
+After connection creation, open **Access Policy** for the same `project_id` + `app_id`.
 
-`/ui` actions:
-1. resolve runtime principal via `/v1/auth-check` (get `sub`, `principal_type`)
-2. call `POST /v1/access-policies` with admin token and runtime principal values
+Fill these fields:
+1. `bucket_name`: same exact value used in connection step
+2. `principal_type`: `service` (for M2M runtime) or `user` (for user-token runtime)
+3. `principal_id`: runtime subject ID (usually Auth0 `sub`)
+4. `role`: usually `project-client` for runtime services
+5. Permission toggles:
+   - `can_read = true` (typical)
+   - `can_write = true` if uploads are needed
+   - `can_delete = false` unless deletes are needed
+   - `can_list = true` if listing images/objects is needed
+6. `prefix_allowlist`: match least-privilege runtime paths
+
+Recommended first-time safe value:
+1. `prefix_allowlist = ["uploads/project-1/app-2/"]`
 
 Important:
 1. `POST /v1/access-policies` is admin-only.
-2. Effective prefix authorization is intersection of:
+2. Effective allowed prefix set is intersection of:
    - bucket connection `allowed_prefixes`
    - policy `prefix_allowlist`
 
-### 5.5 `/ui` runs validation test
+### 5.6 Click Save Policy and verify result
 
-Run one smoke test through this service from `/ui`:
-1. presign upload or tiny upload under allowed prefix
+1. Click **Save Policy** or **Upsert Policy**.
+2. `/ui` sends `POST /v1/access-policies`.
+3. Success criteria:
+   - policy upsert confirmation shown
+   - no auth/validation errors
+4. If `404 not_found`, confirm bucket connection exists in the same `project_id` and `app_id`.
+
+### 5.7 Whitelist the bucket with the droplet account
+
+1. login to AWS CLI: `aws sso login --profile s3-service-admin`
+2. run `./scripts/whitelist-bucket-access.sh {bucketNameHere}`
+
+### 5.8 Run validation test in UI
+
+Run one smoke test from the UI:
+1. presign upload or tiny upload using a key under your configured prefix
+
+Use a test object key that clearly matches prefix, for example:
+1. `uploads/project-1/app-2/smoke-test.txt`
 
 UI should display:
 1. auth check summary
 2. scope summary (`project_id`, `app_id`, principal)
-3. test result
+3. test result and returned error details on failure
 
 ## 6) Suggested `/ui` screens
 
