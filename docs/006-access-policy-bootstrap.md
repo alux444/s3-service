@@ -4,6 +4,147 @@ Use this when protected routes return forbidden because no access_policies row e
 
 Use your custom UI (or curl) to call `POST /v1/access-policies`.
 
+## 0) Supabase: enable Row Level Security (RLS) and example policies
+
+If you host Postgres in Supabase and have enabled RLS globally, you must add table-level RLS and policies so JWT-scoped requests can read and (where appropriate) modify the rows used by this service.
+
+Recommended steps (run these from the Supabase SQL editor or with `psql` using your `DATABASE_URL`):
+
+Run in Supabase SQL editor, or from your terminal:
+
+~~~bash
+psql "${DATABASE_URL}" <<'SQL'
+-- paste SQL from the next steps here
+SQL
+~~~
+
+1. Enable RLS on the tables used by this service:
+
+~~~sql
+ALTER TABLE public.bucket_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.access_policies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_events ENABLE ROW LEVEL SECURITY;
+~~~
+
+2. Ensure the `authenticated` role has table privileges (RLS still applies):
+
+~~~sql
+GRANT SELECT ON public.bucket_connections TO authenticated;
+GRANT SELECT ON public.access_policies TO authenticated;
+GRANT SELECT ON public.audit_events TO authenticated;
+
+GRANT INSERT, UPDATE, DELETE ON public.bucket_connections TO authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.access_policies TO authenticated;
+GRANT INSERT ON public.audit_events TO authenticated;
+~~~
+
+3. Create a full policy set that matches this project's auth model.
+     - project/app scope is enforced with JWT claims.
+     - principals can read their own access policies.
+     - admin-scoped tokens can manage connections and access policies.
+     - audit events can be read per project/app; writes are admin-only (or use `service_role`).
+
+Example policies (adapt to your claim names if different):
+
+~~~sql
+-- bucket_connections: read within project+app scope
+CREATE POLICY bucket_connections_select_project_app
+    ON public.bucket_connections
+    FOR SELECT
+    TO authenticated
+    USING (
+        (select auth.jwt() ->> 'project_id') = project_id
+        AND (select auth.jwt() ->> 'app_id') = app_id
+        AND is_active = true
+    );
+
+-- bucket_connections: admin can insert/update/delete within project+app scope
+CREATE POLICY bucket_connections_admin_write
+    ON public.bucket_connections
+    FOR ALL
+    TO authenticated
+    USING (
+        (select auth.jwt() ->> 'role') = 'admin'
+        AND (select auth.jwt() ->> 'project_id') = project_id
+        AND (select auth.jwt() ->> 'app_id') = app_id
+    )
+    WITH CHECK (
+        (select auth.jwt() ->> 'role') = 'admin'
+        AND (select auth.jwt() ->> 'project_id') = project_id
+        AND (select auth.jwt() ->> 'app_id') = app_id
+    );
+
+-- access_policies: principal can read their own policies scoped by connection
+CREATE POLICY access_policies_select_owner
+    ON public.access_policies
+    FOR SELECT
+    TO authenticated
+    USING (
+        principal_type = (select auth.jwt() ->> 'principal_type')
+        AND principal_id = (select auth.jwt() ->> 'sub')
+        AND bucket_connection_id IN (
+            select id from public.bucket_connections bc
+            where bc.project_id = (select auth.jwt() ->> 'project_id')
+                and bc.app_id   = (select auth.jwt() ->> 'app_id')
+                and bc.is_active = true
+        )
+    );
+
+-- access_policies: admin can insert/update/delete within project+app scope
+CREATE POLICY access_policies_admin_write
+    ON public.access_policies
+    FOR ALL
+    TO authenticated
+    USING (
+        (select auth.jwt() ->> 'role') = 'admin'
+        AND bucket_connection_id IN (
+            select id from public.bucket_connections bc
+            where bc.project_id = (select auth.jwt() ->> 'project_id')
+                and bc.app_id   = (select auth.jwt() ->> 'app_id')
+                and bc.is_active = true
+        )
+    )
+    WITH CHECK (
+        (select auth.jwt() ->> 'role') = 'admin'
+        AND bucket_connection_id IN (
+            select id from public.bucket_connections bc
+            where bc.project_id = (select auth.jwt() ->> 'project_id')
+                and bc.app_id   = (select auth.jwt() ->> 'app_id')
+                and bc.is_active = true
+        )
+    );
+
+-- audit_events: read within project+app scope
+CREATE POLICY audit_events_select_project_app
+    ON public.audit_events
+    FOR SELECT
+    TO authenticated
+    USING (
+        (select auth.jwt() ->> 'project_id') = project_id
+        AND (select auth.jwt() ->> 'app_id') = app_id
+    );
+
+-- audit_events: admin-only inserts (or use service_role bypass)
+CREATE POLICY audit_events_admin_insert
+    ON public.audit_events
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+        (select auth.jwt() ->> 'role') = 'admin'
+        AND (select auth.jwt() ->> 'project_id') = project_id
+        AND (select auth.jwt() ->> 'app_id') = app_id
+    );
+~~~
+
+Notes:
+- These examples use `auth.jwt()` helper functions and string-typed claim keys (`project_id`, `app_id`, `sub`, `principal_type`, `role`) as used elsewhere in this repo. If your identity provider uses different claim names, adjust the `->>` keys accordingly.
+- The Supabase `service_role` (or any Postgres role with `bypassrls`) can be used for migrations and background jobs. Do NOT use service keys from browser clients.
+- If you do not want non-admins to read `audit_events`, remove the SELECT policy and rely on admin or service_role only.
+- Index the columns used by policies (`project_id`, `app_id`, `principal_type`, `principal_id`) — the migrations already add useful indexes for `bucket_connections` and `access_policies`.
+
+If you prefer to keep RLS off for a short testing window, do so carefully and only in non-production projects.
+
+
 ## 1) What the endpoint does
 
 It finds the active bucket connection by:
