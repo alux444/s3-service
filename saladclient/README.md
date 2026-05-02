@@ -80,12 +80,12 @@ fmt.Printf("Uploaded: %s (ETag: %s)\n", resp.ObjectKey, resp.ETag)
 ### Downloading an Object via Presigned URL
 
 ```go
-presign, err := client.PresignDownloadURL(ctx, "my-bucket", "path/to/file.txt")
+presign, err := client.PresignDownloadURLWithOptions(ctx, "my-bucket", "path/to/file.txt", 120)
 if err != nil {
 	log.Fatal(err)
 }
 fmt.Printf("Download URL: %s\n", presign.URL)
-fmt.Printf("Expires at: %s\n", presign.ExpiresAt)
+fmt.Printf("Expires in: %d seconds\n", presign.ExpiresInSeconds)
 ```
 
 ### Listing Images
@@ -143,8 +143,10 @@ fmt.Printf("Policy upserted: %v\n", resp.Upserted)
 - `UploadObject(ctx, req)` - Upload an object
 - `UploadObjectWithData(ctx, bucket, key, contentType, data, metadata)` - Upload with raw data
 - `DeleteObject(ctx, bucket, key)` - Delete an object
-- `PresignUploadURL(ctx, bucket, key)` - Get a presigned URL for uploads
-- `PresignDownloadURL(ctx, bucket, key)` - Get a presigned URL for downloads
+- `PresignUploadURL(ctx, bucket, key)` - Get a presigned URL for uploads (defaults to application/octet-stream)
+- `PresignUploadURLWithOptions(ctx, bucket, key, contentType, expiresInSeconds)` - Presign uploads with options
+- `PresignDownloadURL(ctx, bucket, key)` - Get a presigned URL for downloads (default expiry)
+- `PresignDownloadURLWithOptions(ctx, bucket, key, expiresInSeconds)` - Presign downloads with options
 
 ### Images
 

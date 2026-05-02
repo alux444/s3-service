@@ -19,6 +19,11 @@ type Client struct {
 	httpClient *http.Client
 }
 
+type envelopeResponse struct {
+	Data  json.RawMessage `json:"data"`
+	Error *APIError       `json:"error,omitempty"`
+}
+
 // NewClient creates a new s3-service client
 func NewClient(baseURL string, token string) *Client {
 	return &Client{
@@ -72,14 +77,27 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 
 	// Check for HTTP errors
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var apiErr APIResponse
-		if err := json.Unmarshal(respBody, &apiErr); err == nil && apiErr.Error != nil {
-			return fmt.Errorf("API error (HTTP %d): %s - %s", resp.StatusCode, apiErr.Error.Code, apiErr.Error.Message)
+		var envelope envelopeResponse
+		if err := json.Unmarshal(respBody, &envelope); err == nil && envelope.Error != nil {
+			return fmt.Errorf("API error (HTTP %d): %s - %s", resp.StatusCode, envelope.Error.Code, envelope.Error.Message)
 		}
 		return fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	if responseType != nil {
+		var envelope envelopeResponse
+		if err := json.Unmarshal(respBody, &envelope); err == nil && (len(envelope.Data) > 0 || envelope.Error != nil) {
+			if envelope.Error != nil {
+				return fmt.Errorf("API error (HTTP %d): %s - %s", resp.StatusCode, envelope.Error.Code, envelope.Error.Message)
+			}
+			if len(envelope.Data) == 0 {
+				return nil
+			}
+			if err := json.Unmarshal(envelope.Data, responseType); err != nil {
+				return fmt.Errorf("failed to unmarshal response data: %w", err)
+			}
+			return nil
+		}
 		if err := json.Unmarshal(respBody, responseType); err != nil {
 			return fmt.Errorf("failed to unmarshal response: %w", err)
 		}
@@ -183,9 +201,16 @@ func (c *Client) DeleteObject(ctx context.Context, bucketName, objectKey string)
 
 // PresignUploadURL generates a presigned URL for uploading an object
 func (c *Client) PresignUploadURL(ctx context.Context, bucketName, objectKey string) (*PresignResponse, error) {
+	return c.PresignUploadURLWithOptions(ctx, bucketName, objectKey, "application/octet-stream", 0)
+}
+
+// PresignUploadURLWithOptions generates a presigned URL for uploading an object with options.
+func (c *Client) PresignUploadURLWithOptions(ctx context.Context, bucketName, objectKey, contentType string, expiresInSeconds int64) (*PresignResponse, error) {
 	req := &PresignUploadRequest{
-		BucketName: bucketName,
-		ObjectKey:  objectKey,
+		BucketName:       bucketName,
+		ObjectKey:        objectKey,
+		ContentType:      contentType,
+		ExpiresInSeconds: expiresInSeconds,
 	}
 	var resp PresignResponse
 	if err := c.doRequest(ctx, http.MethodPost, "/v1/objects/presign-upload", req, &resp); err != nil {
@@ -196,9 +221,15 @@ func (c *Client) PresignUploadURL(ctx context.Context, bucketName, objectKey str
 
 // PresignDownloadURL generates a presigned URL for downloading an object
 func (c *Client) PresignDownloadURL(ctx context.Context, bucketName, objectKey string) (*PresignResponse, error) {
+	return c.PresignDownloadURLWithOptions(ctx, bucketName, objectKey, 0)
+}
+
+// PresignDownloadURLWithOptions generates a presigned URL for downloading an object with options.
+func (c *Client) PresignDownloadURLWithOptions(ctx context.Context, bucketName, objectKey string, expiresInSeconds int64) (*PresignResponse, error) {
 	req := &PresignDownloadRequest{
-		BucketName: bucketName,
-		ObjectKey:  objectKey,
+		BucketName:       bucketName,
+		ObjectKey:        objectKey,
+		ExpiresInSeconds: expiresInSeconds,
 	}
 	var resp PresignResponse
 	if err := c.doRequest(ctx, http.MethodPost, "/v1/objects/presign-download", req, &resp); err != nil {

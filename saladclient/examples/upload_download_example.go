@@ -46,23 +46,23 @@ func main() {
 
 	// 2. Get a presigned download URL
 	fmt.Println("\n2. Generating presigned download URL...")
-	downloadPresign, err := client.PresignDownloadURL(ctx, bucketName, objectKey)
+	downloadPresign, err := client.PresignDownloadURLWithOptions(ctx, bucketName, objectKey, 120)
 	if err != nil {
 		log.Fatalf("Presign download failed: %v", err)
 	}
 	fmt.Printf("   Download URL: %s\n", downloadPresign.URL)
 	fmt.Printf("   Method: %s\n", downloadPresign.Method)
-	fmt.Printf("   Expires at: %s\n", downloadPresign.ExpiresAt)
+	fmt.Printf("   Expires in: %d seconds\n", downloadPresign.ExpiresInSeconds)
 
 	// 3. Get a presigned upload URL
 	fmt.Println("\n3. Generating presigned upload URL...")
-	uploadPresign, err := client.PresignUploadURL(ctx, bucketName, "example/file2.txt")
+	uploadPresign, err := client.PresignUploadURLWithOptions(ctx, bucketName, "example/file2.txt", "text/plain", 60)
 	if err != nil {
 		log.Fatalf("Presign upload failed: %v", err)
 	}
 	fmt.Printf("   Upload URL: %s\n", uploadPresign.URL)
 	fmt.Printf("   Method: %s\n", uploadPresign.Method)
-	fmt.Printf("   Expires at: %s\n", uploadPresign.ExpiresAt)
+	fmt.Printf("   Expires in: %d seconds\n", uploadPresign.ExpiresInSeconds)
 
 	// 4. Delete the object
 	fmt.Println("\n4. Deleting object...")

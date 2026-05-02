@@ -88,17 +88,20 @@ type ObjectDeleteResponse struct {
 type PresignUploadRequest struct {
 	BucketName string `json:"bucket_name"`
 	ObjectKey  string `json:"object_key"`
+	ContentType string `json:"content_type,omitempty"`
+	ExpiresInSeconds int64 `json:"expires_in_seconds,omitempty"`
 }
 
 type PresignDownloadRequest struct {
 	BucketName string `json:"bucket_name"`
 	ObjectKey  string `json:"object_key"`
+	ExpiresInSeconds int64 `json:"expires_in_seconds,omitempty"`
 }
 
 type PresignResponse struct {
-	URL       string `json:"url"`
-	Method    string `json:"method"`
-	ExpiresAt string `json:"expires_at"`
+	URL              string `json:"url"`
+	Method           string `json:"method"`
+	ExpiresInSeconds int64  `json:"expires_in_seconds"`
 }
 
 // Image types
