@@ -3,6 +3,7 @@
 Use this guide to onboard a new app and register a new bucket through your `/ui` admin setup console.
 
 This guide assumes:
+
 1. `/ui` is admin-only.
 2. `/ui` performs setup by calling this service's onboarding APIs.
 3. Token acquisition/refresh happens first, then setup API calls run.
@@ -10,11 +11,13 @@ This guide assumes:
 ## 1) Architecture and boundaries
 
 Use one setup pattern in this guide:
+
 1. Admin signs into `/ui`.
 2. `/ui` gets a valid admin token.
 3. `/ui` calls setup APIs on this service.
 
 Guardrails:
+
 1. Keep `/ui` restricted to trusted admins.
 2. Do not expose machine-to-machine client secrets in browser code.
 3. If `/ui` is browser-based, use admin user tokens instead of embedded M2M secrets.
@@ -22,6 +25,7 @@ Guardrails:
 ## 2) Required token claims for this service
 
 This service requires these JWT claims on `/v1/*` calls:
+
 - `sub`
 - `app_id`
 - `project_id`
@@ -35,6 +39,7 @@ For setup actions in `/ui`, `role` must be `admin`.
 ### 2.1 Token scope vs AWS prefix scope (important)
 
 These are different layers:
+
 1. Token scope identifies app ownership context:
    - `project_id`
    - `app_id`
@@ -49,6 +54,7 @@ So you do not request a token "for a prefix".
 You request a token for an app scope (`project_id` + `app_id`), then configure prefixes during bucket connection/policy setup.
 
 If you need isolation by prefix, use a naming convention such as:
+
 1. `allowed_prefixes = ["uploads/project-1/app-2/"]`
 2. matching `prefix_allowlist = ["uploads/project-1/app-2/"]`
 
@@ -57,6 +63,7 @@ If you need isolation by prefix, use a naming convention such as:
 ### 3.1 Create two machine-to-machine clients per app scope
 
 For each app onboarding flow, use two M2M clients:
+
 1. Bootstrap admin client:
    - used by backend only for setup endpoints
    - metadata role should be `admin`
@@ -69,6 +76,7 @@ Both clients should have the same `app_id` and `project_id` for that app scope.
 ### 3.2 Set Auth0 client metadata
 
 In Auth0 Dashboard:
+
 1. Applications -> Applications.
 2. Open the Machine to Machine app.
 3. Settings -> Application Metadata.
@@ -89,6 +97,7 @@ For the bootstrap admin client, set `role` to `admin`.
 ### 3.2.1 How `/ui` gets the right token for the app you are onboarding
 
 When onboarding app `app-2` in `project-1`:
+
 1. Set Auth0 metadata on the client used by `/ui` setup flow:
    - `app_id=app-2`
    - `project_id=project-1`
@@ -130,6 +139,7 @@ exports.onExecuteCredentialsExchange = async (event, api) => {
 ### 3.4 Authorize each M2M client for your API audience
 
 In Auth0:
+
 1. APIs -> your API -> Machine to Machine Applications.
 2. Authorize both the bootstrap admin client and runtime app client.
 
@@ -152,6 +162,7 @@ PROJECT_PREFIX=s3-service \
 ```
 
 This creates or updates:
+
 1. bucket with private baseline controls
 2. assume-role used by this service for app operations
 3. runtime IAM bootstrap user and policies
@@ -178,6 +189,7 @@ echo "role_arn=${ROLE_ARN}"
 ### 4.3 Map command values to UI fields
 
 Use these values in your onboarding form:
+
 1. project_id: from app scope design (for example project-1)
 2. app_id: from app scope design (for example app-2)
 3. bucket_name: value from BUCKET_NAME
@@ -203,6 +215,7 @@ This section is written as an operator runbook. Follow it exactly in order.
 ### 5.1 Pre-flight values you must have before opening `/ui`
 
 Collect these values first:
+
 1. `project_id` (example: `project-1`)
 2. `app_id` (example: `app-2`)
 3. `bucket_name` (example output from section 4.2)
@@ -243,11 +256,12 @@ echo "$TOKEN"
 ```
 
 Important:
+
 1. Treat this token as sensitive.
 2. Do not store it permanently in local storage.
 3. Re-mint and re-validate when expired.
 
-### 5.3 Fill the Bucket Connection form 
+### 5.3 Fill the Bucket Connection form
 
 In the Bucket Connection screen, fill exactly these UI fields:
 
@@ -258,11 +272,13 @@ In the Bucket Connection screen, fill exactly these UI fields:
 5. **Allowed Prefixes**: one prefix per line (or comma separated if your UI uses commas).
 
 Notes:
+
 1. `External ID` can be left blank if your role trust policy does not require it. This is usually for a third party to access, so we don't usually need this.
 2. If your security team requires `External ID`, paste the exact value configured in the IAM role trust relationship.
 3. Do not add wildcard-style broad prefixes unless explicitly required.
 
 Recommended first-time safe value:
+
 1. `allowed_prefixes = ["uploads/project-1/app-2/"]`
 
 ### 5.4 Click Create Connection and verify result
@@ -281,6 +297,7 @@ Recommended first-time safe value:
 After connection creation, open **Access Policy** for the same `project_id` + `app_id`.
 
 Fill these fields:
+
 1. `bucket_name`: same exact value used in connection step
 2. `principal_type`: `service` (for M2M runtime) or `user` (for user-token runtime)
 3. `principal_id`: runtime subject ID (usually Auth0 `sub`)
@@ -293,9 +310,11 @@ Fill these fields:
 6. `prefix_allowlist`: match least-privilege runtime paths
 
 Recommended first-time safe value:
+
 1. `prefix_allowlist = ["uploads/project-1/app-2/"]`
 
 Important:
+
 1. `POST /v1/access-policies` is admin-only.
 2. Effective allowed prefix set is intersection of:
    - bucket connection `allowed_prefixes`
@@ -318,12 +337,15 @@ Important:
 ### 5.8 Run validation test in UI
 
 Run one smoke test from the UI:
+
 1. presign upload or tiny upload using a key under your configured prefix
 
 Use a test object key that clearly matches prefix, for example:
+
 1. `uploads/project-1/app-2/smoke-test.txt`
 
 UI should display:
+
 1. auth check summary
 2. scope summary (`project_id`, `app_id`, principal)
 3. test result and returned error details on failure
@@ -346,15 +368,18 @@ UI should display:
 ## 7) Secret handling rules
 
 Do not put in `/ui` frontend code:
+
 1. Auth0 client secret
 2. M2M access token
 3. AWS credentials
 
 Allowed in `/ui` frontend:
+
 1. admin access token used for setup calls
 2. public API base URL
 
 Recommended:
+
 1. keep token in memory/session storage with short lifetime
 2. do not persist long-lived setup tokens
 
@@ -369,17 +394,23 @@ Recommended:
 ```json
 [
   {
-    "AllowedOrigins": [
-      "http://localhost:5173",
-      "http://localhost:3000",
-      "https://your-production-domain.com"
-    ],
+    "AllowedOrigins": ["http://localhost:5173", "http://localhost:3000", "https://your-production-domain.com"],
     "AllowedMethods": ["PUT", "GET", "HEAD"],
     "AllowedHeaders": ["Content-Type", "x-amz-*"],
     "ExposeHeaders": ["ETag"],
     "MaxAgeSeconds": 3000
   }
 ]
+```
+
+6. When running services, remember that the backend did a bunch of export envs.
+
+```bash
+# use env to check
+env
+
+# to unset variables example
+unset AUTH0_CLIENT_ID AUTH0_CLIENT_SECRET AUTH0_AUDIENCE AUTH0_DOMAIN
 ```
 
 ## 9) Production recommendations
