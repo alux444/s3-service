@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 )
 
@@ -16,6 +17,7 @@ import (
 type Client struct {
 	baseURL    string
 	token      string
+	tokenMu    sync.RWMutex
 	httpClient *http.Client
 }
 
@@ -44,6 +46,19 @@ func NewClientWithHTTPClient(baseURL string, token string, httpClient *http.Clie
 	}
 }
 
+// SetToken updates the bearer token used for requests.
+func (c *Client) SetToken(token string) {
+	c.tokenMu.Lock()
+	c.token = token
+	c.tokenMu.Unlock()
+}
+
+func (c *Client) tokenValue() string {
+	c.tokenMu.RLock()
+	defer c.tokenMu.RUnlock()
+	return c.token
+}
+
 // doRequest performs an HTTP request with bearer token authentication
 func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}, responseType interface{}) error {
 	var bodyReader io.Reader
@@ -61,7 +76,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.tokenValue()))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -270,7 +285,7 @@ func (c *Client) GetImage(ctx context.Context, imageID string) ([]byte, error) {
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.tokenValue()))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -364,6 +364,23 @@ Recommended:
 2. `403 forbidden`: caller is not admin for `/v1/access-policies`.
 3. `404 not_found` during policy upsert: bucket connection missing in same scope.
 4. `bucket_security_baseline_failed`: target bucket does not meet required baseline.
+5. Using presign, need to add permission to the bucket (this one is via console)
+
+```json
+[
+  {
+    "AllowedOrigins": [
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "https://your-production-domain.com"
+    ],
+    "AllowedMethods": ["PUT", "GET", "HEAD"],
+    "AllowedHeaders": ["Content-Type", "x-amz-*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3000
+  }
+]
+```
 
 ## 9) Production recommendations
 
